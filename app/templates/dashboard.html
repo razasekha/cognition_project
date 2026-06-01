@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Devin Orchestrator – Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --orange: #e3b341;
+      --purple: #bc8cff;
+      --radius: 8px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .badge-open     { background: rgba(88,166,255,0.15); color: var(--accent); }
+    .badge-fixing   { background: rgba(210,153,34,0.15);  color: var(--yellow); }
+    .badge-fixed    { background: rgba(63,185,80,0.15);   color: var(--green); }
+    .badge-failed   { background: rgba(248,81,73,0.15);   color: var(--red); }
+    .badge-critical { background: rgba(248,81,73,0.2);    color: var(--red); }
+    .badge-high     { background: rgba(227,179,65,0.2);   color: var(--orange); }
+    .badge-medium   { background: rgba(188,140,255,0.2);  color: var(--purple); }
+    .badge-low      { background: rgba(139,148,158,0.2);  color: var(--muted); }
+
+    .meta { color: var(--muted); font-size: 0.85rem; }
+
+    /* Metrics cards */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 18px;
+    }
+
+    .card .label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+    }
+
+    .card .value {
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .card .sub {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    .value-green  { color: var(--green); }
+    .value-yellow { color: var(--yellow); }
+    .value-red    { color: var(--red); }
+    .value-blue   { color: var(--accent); }
+    .value-purple { color: var(--purple); }
+
+    /* Progress bar */
+    .progress-bar-wrap {
+      background: var(--border);
+      border-radius: 4px;
+      height: 6px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: var(--green);
+    }
+
+    /* Sections */
+    section { margin-bottom: 40px; }
+
+    section h2 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* Tables */
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    th {
+      text-align: left;
+      padding: 8px 12px;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      max-width: 320px;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .truncate {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: block;
+    }
+
+    .empty { color: var(--muted); font-style: italic; padding: 16px 12px; }
+
+    .role-injector { color: var(--red); }
+    .role-scanner  { color: var(--accent); }
+    .role-fixer    { color: var(--green); }
+
+    .refresh-hint {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    /* Trigger buttons */
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.85rem;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #0d1117;
+      font-weight: 600;
+    }
+    .btn-primary:hover { opacity: 0.85; color: #0d1117; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>
+    ⬡ Devin Orchestrator
+    <span class="badge badge-open" style="font-size:0.68rem;">LIVE</span>
+  </h1>
+  <div style="text-align:right;">
+    <div class="meta">Target: <a href="https://github.com/{{ target_repo }}" target="_blank">{{ target_repo }}</a></div>
+    <div class="meta">Scanner cron: <code>{{ scan_cron }}</code></div>
+    <div class="refresh-hint" style="margin-top:4px;">Auto-refreshes every 30s</div>
+  </div>
+</header>
+
+<!-- Quick-trigger actions -->
+<div class="actions">
+  <button class="btn btn-primary" onclick="triggerInject()">▶ Inject Flaw</button>
+  <button class="btn" onclick="triggerScan()">🔍 Run Scan Now</button>
+  <a class="btn" href="/api/metrics" target="_blank">📊 Raw Metrics JSON</a>
+  <a class="btn" href="/docs" target="_blank">📖 API Docs</a>
+</div>
+
+<!-- Summary cards -->
+{% set m = metrics %}
+<div class="cards">
+  <div class="card">
+    <div class="label">Issues Found</div>
+    <div class="value value-blue">{{ m.issues.total }}</div>
+    <div class="sub">All time</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Fixed</div>
+    <div class="value value-green">{{ m.issues.fixed }}</div>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" style="width: {{ m.issues.fix_rate_pct }}%"></div>
+    </div>
+    <div class="sub">{{ m.issues.fix_rate_pct }}% fix rate</div>
+  </div>
+
+  <div class="card">
+    <div class="label">In Progress</div>
+    <div class="value value-yellow">{{ m.issues.fixing }}</div>
+    <div class="sub">Being remediated</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Failed</div>
+    <div class="value {% if m.issues.failed > 0 %}value-red{% else %}value-green{% endif %}">{{ m.issues.failed }}</div>
+    <div class="sub">Remediation errors</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Sessions</div>
+    <div class="value value-blue">{{ m.sessions.total }}</div>
+    <div class="sub">{{ m.sessions.success_rate_pct }}% success rate</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Active Sessions</div>
+    <div class="value {% if m.sessions.active > 0 %}value-yellow{% else %}value-green{% endif %}">{{ m.sessions.active }}</div>
+    <div class="sub">Running now</div>
+  </div>
+
+  <div class="card">
+    <div class="label">ACUs Consumed</div>
+    <div class="value value-purple">{{ m.acus.total }}</div>
+    <div class="sub">Compute units total</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Avg. Time to Fix</div>
+    {% if m.mttr_seconds > 3600 %}
+      <div class="value value-yellow">{{ (m.mttr_seconds // 3600) }}h {{ ((m.mttr_seconds % 3600) // 60) }}m</div>
+    {% elif m.mttr_seconds > 0 %}
+      <div class="value value-green">{{ m.mttr_seconds // 60 }}m {{ m.mttr_seconds % 60 }}s</div>
+    {% else %}
+      <div class="value value-muted" style="color:var(--muted)">—</div>
+    {% endif %}
+    <div class="sub">Mean time to remediate</div>
+  </div>
+</div>
+
+<!-- Issues table -->
+<section>
+  <h2>Issues Log</h2>
+  <div class="table-wrap">
+    {% if issues %}
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Severity</th>
+          <th>Category</th>
+          <th>Description</th>
+          <th>File</th>
+          <th>Status</th>
+          <th>GitHub Issue</th>
+          <th>Fix PR</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for issue in issues %}
+        <tr>
+          <td>{{ issue.id }}</td>
+          <td><span class="badge badge-{{ issue.severity }}">{{ issue.severity }}</span></td>
+          <td>{{ issue.category }}</td>
+          <td><span class="truncate" title="{{ issue.description }}" style="max-width:260px;">{{ issue.description }}</span></td>
+          <td><code style="font-size:0.78rem;">{{ issue.file or '—' }}{% if issue.line %}:{{ issue.line }}{% endif %}</code></td>
+          <td><span class="badge badge-{{ issue.status }}">{{ issue.status }}</span></td>
+          <td>
+            {% if issue.github_issue_url %}
+              <a href="{{ issue.github_issue_url }}" target="_blank">View ↗</a>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if issue.fix_pr_url %}
+              <a href="{{ issue.fix_pr_url }}" target="_blank">PR ↗</a>
+            {% elif issue.status == 'open' %}
+              <button class="btn" style="padding:3px 8px;font-size:0.75rem;" onclick="triggerFix({{ issue.id }})">Fix now</button>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No issues logged yet. Trigger a scan to find issues.</p>
+    {% endif %}
+  </div>
+</section>
+
+<!-- Sessions table -->
+<section>
+  <h2>Devin Sessions</h2>
+  <div class="table-wrap">
+    {% if sessions %}
+    <table>
+      <thead>
+        <tr>
+          <th>Session ID</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Detail</th>
+          <th>ACUs</th>
+          <th>PR</th>
+          <th>Devin Link</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in sessions %}
+        <tr>
+          <td><code style="font-size:0.75rem;">{{ s.session_id[:24] }}…</code></td>
+          <td><span class="role-{{ s.role }}">{{ s.role }}</span></td>
+          <td>
+            <span class="badge {% if s.status == 'exit' %}badge-fixed{% elif s.status in ('error', 'suspended') %}badge-failed{% elif s.status == 'new' %}badge-low{% else %}badge-fixing{% endif %}">
+              {{ s.status }}
+            </span>
+          </td>
+          <td>{{ s.status_detail or '—' }}</td>
+          <td>{{ '%.2f'|format(s.acus_consumed) }}</td>
+          <td>
+            {% if s.pr_url %}
+              <a href="{{ s.pr_url }}" target="_blank">PR ↗</a>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if s.devin_url %}
+              <a href="{{ s.devin_url }}" target="_blank">Open ↗</a>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No sessions yet. Trigger an inject or scan to start.</p>
+    {% endif %}
+  </div>
+</section>
+
+<script>
+  // Auto-refresh every 30 seconds
+  setTimeout(() => location.reload(), 30000);
+
+  async function triggerInject() {
+    const area = prompt("Focus area for injection:", "security - introduce a hardcoded API key in the auth module");
+    if (!area) return;
+    const r = await fetch('/inject', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({focus_area: area})
+    });
+    const d = await r.json();
+    alert(d.message || JSON.stringify(d));
+  }
+
+  async function triggerScan() {
+    const r = await fetch('/scan', {method: 'POST'});
+    const d = await r.json();
+    alert(d.message || JSON.stringify(d));
+  }
+
+  async function triggerFix(issueId) {
+    if (!confirm(`Fix issue #${issueId} now?`)) return;
+    const r = await fetch(`/fix/${issueId}`, {method: 'POST'});
+    const d = await r.json();
+    alert(d.message || JSON.stringify(d));
+  }
+</script>
+
+</body>
+</html>
