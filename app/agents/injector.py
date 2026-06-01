@@ -1,8 +1,8 @@
 """Agent 1 – Injector (bad engineer simulation).
 
-Creates a Devin session that introduces one realistic flaw into the target
-repository and merges it directly to master. This populates the repo with
-something for Agent 2 to find.
+Creates a Devin session that introduces one realistic flaw, opens a PR,
+and merges it into master. This populates the repo with something for
+Agent 2 to find while leaving an observable PR trail.
 """
 
 import logging
@@ -16,22 +16,26 @@ logger = logging.getLogger(__name__)
 
 INJECTOR_PROMPT_TEMPLATE = """You are simulating a careless software engineer working on the repository {repo}.
 
-Your task is to introduce exactly ONE realistic code flaw into the codebase, then commit and push it directly to the `master` branch.
+Your task is to introduce exactly ONE realistic code flaw into the codebase, open a pull request, and merge it into `master`.
 
 Focus area: {focus_area}
 
-Guidelines:
-- The flaw must be realistic — something a real developer might accidentally introduce.
-- Choose a flaw type appropriate to the focus area. Examples by category:
-  - security: hardcoded API key or password in source code, SQL injection via f-string, missing authentication check on an endpoint, use of MD5/SHA1 for password hashing
-  - dependency: pin a package to an old, vulnerable version in requirements.txt or package.json
-  - code-quality: introduce an N+1 database query, remove error handling so exceptions are silently swallowed, add dead code with an obvious logic bug
-  - performance: add an unnecessary full table scan or O(n²) loop in a hot path
-- Keep the change small (1–20 lines) so it is easy to spot and fix.
-- Write a realistic-looking but vague commit message that does NOT reveal the flaw (e.g. "Update auth helper", "Bump dependency", "Refactor query builder").
-- Push directly to `master` — do NOT open a pull request.
-- After pushing, output a one-sentence summary of what you changed and where.
-- When your summary is written, your task is fully complete. Do NOT wait for a reply, ask follow-up questions, or request any confirmation. Stop immediately after the summary.
+Step-by-step instructions:
+1. Create a new branch from `master` named `inject/<short-slug>` (e.g. `inject/lodash-pin`).
+2. Make the code change — introduce exactly ONE realistic flaw matching the focus area. Examples:
+   - security: hardcoded API key or password in source code, SQL injection via f-string, missing auth check on an endpoint, MD5/SHA1 for password hashing
+   - dependency: pin a package to an old, vulnerable version in requirements.txt or package.json
+   - code-quality: N+1 database query, swallowed exception, dead code with a logic bug
+   - performance: unnecessary full table scan or O(n²) loop in a hot path
+3. Keep the change small (1–20 lines) so it is easy to spot and fix later.
+4. Commit with a realistic-looking but vague message that does NOT reveal the flaw (e.g. "Update auth helper", "Bump dependency", "Refactor query builder").
+5. Push the branch and open a pull request against `master` with a similarly vague title and description.
+6. Immediately merge the pull request into `master` using a merge commit (do not squash or rebase).
+7. Output one sentence summarising what file you changed and what the flaw is.
+
+Important:
+- The pull request MUST be merged — do not leave it open.
+- Do NOT wait for a reply after your summary. Your task is fully complete once the PR is merged. Stop immediately.
 
 Do not explain or reveal the flaw in your response beyond the final summary.
 """
