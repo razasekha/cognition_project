@@ -41,6 +41,11 @@ Your task:
 5. After completing the scan, call `provide_structured_output` with `is_final=true` to submit your findings.
 
 Important: populate the structured output EVEN IF you find no issues (return an empty `issues` array and a summary explaining the codebase is clean).
+{focus_section}"""
+
+SCANNER_FOCUS_SECTION = """
+Additional focus from operator: {focus_area}
+Prioritise findings that match this focus area. Still report any critical issues you encounter outside this scope.
 """
 
 GITHUB_ISSUE_TITLE_TEMPLATE = "[{severity}] {category}: {description_short}"
@@ -86,13 +91,26 @@ def _open_github_issue(
         return None
 
 
-def run() -> tuple[list[int], dict[str, Any]]:
+def run(focus_area: Optional[str] = None) -> tuple[list[int], dict[str, Any]]:
     """Run Agent 2. Returns (list of new issue IDs, completed session dict)."""
     run_id = str(uuid.uuid4())
-    prompt = SCANNER_PROMPT_TEMPLATE.format(repo=settings.target_repo)
+    focus_section = (
+        SCANNER_FOCUS_SECTION.format(focus_area=focus_area) if focus_area else ""
+    )
+    prompt = SCANNER_PROMPT_TEMPLATE.format(
+        repo=settings.target_repo,
+        focus_section=focus_section,
+    )
     tags = ["agent:scanner", f"run:{run_id}"]
+    if focus_area:
+        tags.append("mode:targeted")
 
-    logger.info("Scanner starting | run_id=%s", run_id)
+    logger.info("Scanner starting | run_id=%s | targeted=%s", run_id, bool(focus_area))
+
+    title = (
+        f"[Scanner] targeted: {focus_area[:40]}" if focus_area
+        else f"[Scanner] general run:{run_id[:8]}"
+    )
 
     session_data = devin_client.create_session(
         prompt=prompt,
@@ -102,7 +120,7 @@ def run() -> tuple[list[int], dict[str, Any]]:
         structured_output_required=True,
         max_acu_limit=settings.max_acu_scanner,
         bypass_approval=True,
-        title=f"[Scanner] run:{run_id[:8]}",
+        title=title,
     )
 
     session_id = session_data["session_id"]

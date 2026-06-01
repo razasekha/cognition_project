@@ -30,7 +30,7 @@ from fastapi.templating import Jinja2Templates
 from app import db
 from app.agents import fixer, injector, scanner
 from app.config import settings
-from app.schemas import InjectRequest, MetricsOut
+from app.schemas import InjectRequest, MetricsOut, ScanRequest, FeatureRequest
 
 logging.basicConfig(
     level=logging.INFO,
@@ -217,9 +217,9 @@ def _bg_inject(focus_area: str) -> None:
         logger.exception("Injector background task failed: %s", exc)
 
 
-def _bg_scan() -> None:
+def _bg_scan(focus_area: str | None = None) -> None:
     try:
-        new_ids, _ = scanner.run()
+        new_ids, _ = scanner.run(focus_area=focus_area)
         if new_ids:
             logger.info("Scan found %d new issue(s); firing fixers in parallel.", len(new_ids))
             for issue_id in new_ids:
@@ -230,6 +230,13 @@ def _bg_scan() -> None:
 
 def _bg_fix(issue_id: int) -> None:
     _fixer_pool.submit(_safe_fixer_run, issue_id)
+
+
+def _bg_feature(description: str) -> None:
+    try:
+        fixer.run_feature(description)
+    except Exception as exc:
+        logger.exception("Feature background task failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -254,12 +261,27 @@ def inject(body: InjectRequest, background_tasks: BackgroundTasks) -> dict[str, 
 
 
 @app.post("/scan")
-def scan(background_tasks: BackgroundTasks) -> dict[str, Any]:
-    """Trigger Agent 2 to scan the repository immediately."""
-    logger.info("POST /scan triggered manually.")
-    background_tasks.add_task(_bg_scan)
+def scan(background_tasks: BackgroundTasks, body: ScanRequest = ScanRequest()) -> dict[str, Any]:
+    """Trigger Agent 2 to scan the repository immediately. Optionally accepts a focus prompt."""
+    focus = body.prompt or None
+    logger.info("POST /scan triggered manually. targeted=%s", bool(focus))
+    background_tasks.add_task(_bg_scan, focus)
+    mode = "targeted" if focus else "general"
     return {
-        "message": "Scanner session started in background. Agent 3 will auto-fire for new findings.",
+        "message": f"Scanner ({mode}) started in background. Agent 3 will auto-fire for new findings.",
+        "target_repo": settings.target_repo,
+        "focus": focus,
+    }
+
+
+@app.post("/feature")
+def feature(body: FeatureRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    """Trigger Agent 3 to implement a new feature and open a pull request."""
+    logger.info("POST /feature | description=%s…", body.description[:60])
+    background_tasks.add_task(_bg_feature, body.description)
+    return {
+        "message": "Feature implementation session started in background.",
+        "description": body.description[:120],
         "target_repo": settings.target_repo,
     }
 

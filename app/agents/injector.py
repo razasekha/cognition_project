@@ -18,7 +18,9 @@ INJECTOR_PROMPT_TEMPLATE = """You are simulating a careless software engineer wo
 
 Your task is to introduce exactly ONE realistic code flaw into the codebase, open a pull request, and merge it into `master`.
 
-Focus area: {focus_area}
+Focus area (provided by operator): {focus_area}
+
+Use this description exactly — implement the specific flaw type described above. Do not choose a different flaw or deviate from the operator's instructions.
 
 Step-by-step instructions:
 1. Create a new branch from `master` named `inject/<short-slug>` (e.g. `inject/lodash-pin`).

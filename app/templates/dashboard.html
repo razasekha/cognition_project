@@ -335,6 +335,41 @@
     }
 
     .poll-ts { font-size: 0.72rem; color: var(--muted); }
+
+    /* ── Sub-tab toggle inside a cc-card ── */
+    .sub-tabs {
+      display: flex; gap: 4px; margin-bottom: 14px;
+    }
+    .sub-tab-btn {
+      padding: 5px 14px; border-radius: 20px;
+      border: 1px solid var(--border);
+      background: none; color: var(--muted);
+      font-size: 0.78rem; font-weight: 600; cursor: pointer;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .sub-tab-btn.active {
+      background: var(--surface2); color: var(--text); border-color: var(--accent);
+    }
+    .sub-tab-btn:hover:not(.active) { color: var(--text); }
+
+    .sub-panel { display: none; }
+    .sub-panel.active { display: block; }
+
+    /* Scan mode toggle */
+    .scan-mode-row {
+      display: flex; gap: 8px; margin-bottom: 10px;
+    }
+    .scan-mode-btn {
+      padding: 6px 14px; border-radius: 20px;
+      border: 1px solid var(--border);
+      background: none; color: var(--muted);
+      font-size: 0.78rem; font-weight: 600; cursor: pointer;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .scan-mode-btn.active {
+      background: rgba(88,166,255,0.12); color: var(--accent); border-color: var(--accent);
+    }
+    .scan-mode-btn:hover:not(.active) { color: var(--text); }
   </style>
 </head>
 <body>
@@ -522,31 +557,65 @@
         <span class="icon icon-blue">🔍</span>
         Agent 2 — Scan Repository
       </h3>
-      <p style="font-size:0.84rem; color:var(--muted); margin-bottom:14px; line-height:1.5;">
-        Scans <code>master</code> for security, dependency, code-quality, and performance issues.
-        Findings are logged and Agent 3 fires automatically for each new one.
-        Also runs automatically on cron: <code>{{ scan_cron }}</code>
+      <p style="font-size:0.82rem; color:var(--muted); margin-bottom:12px; line-height:1.5;">
+        Scans <code>master</code> for issues. Auto-fires fixers for new findings.
+        Cron: <code>{{ scan_cron }}</code>
       </p>
+
+      <!-- Mode selector -->
+      <div class="scan-mode-row">
+        <button class="scan-mode-btn active" id="scan-mode-general" onclick="setScanMode('general')">General Scan</button>
+        <button class="scan-mode-btn" id="scan-mode-targeted" onclick="setScanMode('targeted')">Targeted Scan</button>
+      </div>
+
+      <!-- Targeted prompt (hidden until mode selected) -->
+      <div id="scan-focus-wrap" style="display:none; margin-bottom:10px;">
+        <label for="scan-prompt">What should Devin focus on?</label>
+        <textarea id="scan-prompt" rows="3"
+          placeholder="e.g. authentication and session management code&#10;e.g. SQL query construction and ORM usage&#10;e.g. dependency versions in requirements.txt"></textarea>
+      </div>
+
       <div class="cc-actions">
-        <button class="btn btn-primary" id="scan-btn" onclick="doScan()">🔍 Run Scan Now</button>
+        <button class="btn btn-primary" id="scan-btn" onclick="doScan()">🔍 Run Scan</button>
         <span class="cc-feedback" id="scan-feedback"></span>
       </div>
     </div>
 
-    <!-- ── Fixer ── -->
+    <!-- ── Agent 3 dual-mode ── -->
     <div class="cc-card">
       <h3>
         <span class="icon icon-green">🔧</span>
-        Agent 3 — Fix Specific Issue
+        Agent 3 — Fix Issue / Add Feature
       </h3>
-      <label for="fix-select">Select an open issue to fix manually</label>
-      <select id="fix-select">
-        <option value="">— loading issues —</option>
-      </select>
-      <div class="cc-actions" style="margin-top:12px;">
-        <button class="btn btn-green" id="fix-btn" onclick="doFix()">🔧 Fix Issue</button>
-        <span class="cc-feedback" id="fix-feedback"></span>
+
+      <!-- Sub-tab toggle -->
+      <div class="sub-tabs">
+        <button class="sub-tab-btn active" id="agent3-tab-fix" onclick="setAgent3Mode('fix')">🔧 Fix Issue</button>
+        <button class="sub-tab-btn" id="agent3-tab-feature" onclick="setAgent3Mode('feature')">✨ Add Feature</button>
       </div>
+
+      <!-- Fix Issue panel -->
+      <div class="sub-panel active" id="agent3-panel-fix">
+        <label for="fix-select">Select an open issue to remediate</label>
+        <select id="fix-select">
+          <option value="">— loading issues —</option>
+        </select>
+        <div class="cc-actions" style="margin-top:12px;">
+          <button class="btn btn-green" id="fix-btn" onclick="doFix()">🔧 Fix Issue</button>
+        </div>
+      </div>
+
+      <!-- Add Feature panel -->
+      <div class="sub-panel" id="agent3-panel-feature">
+        <label for="feature-prompt">Describe the feature to implement</label>
+        <textarea id="feature-prompt" rows="4"
+          placeholder="e.g. Add rate limiting to the /api/login endpoint — max 5 attempts per minute per IP&#10;e.g. Add a /api/status endpoint returning DB connection health and version&#10;e.g. Refactor the user model to support OAuth providers alongside password auth"></textarea>
+        <div class="cc-actions" style="margin-top:12px;">
+          <button class="btn btn-primary" id="feature-btn" onclick="doFeature()">✨ Implement Feature</button>
+        </div>
+      </div>
+
+      <span class="cc-feedback" id="fix-feedback"></span>
     </div>
 
     <!-- ── Quick metrics (live, no ACUs) ── -->
@@ -666,16 +735,49 @@ async function doInject() {
   finally { btn.disabled = false; }
 }
 
+// ── Scan mode toggle ──
+let _scanMode = 'general';
+function setScanMode(mode) {
+  _scanMode = mode;
+  document.getElementById('scan-mode-general').classList.toggle('active', mode === 'general');
+  document.getElementById('scan-mode-targeted').classList.toggle('active', mode === 'targeted');
+  document.getElementById('scan-focus-wrap').style.display = mode === 'targeted' ? 'block' : 'none';
+}
+
 async function doScan() {
   const btn = document.getElementById('scan-btn');
   btn.disabled = true;
   try {
-    const r = await fetch('/scan', {method: 'POST'});
+    let body = {};
+    if (_scanMode === 'targeted') {
+      const focus = document.getElementById('scan-prompt').value.trim();
+      if (!focus) { setFeedback('scan-feedback', 'Enter a focus area for targeted scan.', true); return; }
+      body = {prompt: focus};
+    }
+    const r = await fetch('/scan', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
     const d = await r.json();
-    if (r.ok) setFeedback('scan-feedback', d.message || 'Scan started.');
-    else setFeedback('scan-feedback', d.detail || 'Error.', true);
+    if (r.ok) {
+      setFeedback('scan-feedback', d.message || 'Scan started.');
+      if (_scanMode === 'targeted') document.getElementById('scan-prompt').value = '';
+    } else {
+      setFeedback('scan-feedback', d.detail || 'Error.', true);
+    }
   } catch(e) { setFeedback('scan-feedback', 'Network error.', true); }
   finally { btn.disabled = false; }
+}
+
+// ── Agent 3 mode toggle ──
+let _agent3Mode = 'fix';
+function setAgent3Mode(mode) {
+  _agent3Mode = mode;
+  document.getElementById('agent3-tab-fix').classList.toggle('active', mode === 'fix');
+  document.getElementById('agent3-tab-feature').classList.toggle('active', mode === 'feature');
+  document.getElementById('agent3-panel-fix').classList.toggle('active', mode === 'fix');
+  document.getElementById('agent3-panel-feature').classList.toggle('active', mode === 'feature');
 }
 
 async function doFix() {
@@ -689,6 +791,28 @@ async function doFix() {
     const d = await r.json();
     if (r.ok) setFeedback('fix-feedback', d.message || 'Fixer started.');
     else setFeedback('fix-feedback', d.detail || 'Error.', true);
+  } catch(e) { setFeedback('fix-feedback', 'Network error.', true); }
+  finally { btn.disabled = false; }
+}
+
+async function doFeature() {
+  const desc = document.getElementById('feature-prompt').value.trim();
+  if (!desc) { setFeedback('fix-feedback', 'Describe the feature first.', true); return; }
+  const btn = document.getElementById('feature-btn');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/feature', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({description: desc}),
+    });
+    const d = await r.json();
+    if (r.ok) {
+      setFeedback('fix-feedback', d.message || 'Feature session started.');
+      document.getElementById('feature-prompt').value = '';
+    } else {
+      setFeedback('fix-feedback', d.detail || 'Error.', true);
+    }
   } catch(e) { setFeedback('fix-feedback', 'Network error.', true); }
   finally { btn.disabled = false; }
 }

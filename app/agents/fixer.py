@@ -52,6 +52,99 @@ GITHUB_ISSUE_SECTION_TEMPLATE = """
 **GitHub Issue:** {github_issue_url}
 """
 
+FEATURE_PROMPT_TEMPLATE = """You are a senior software engineer working on the repository {repo}.
+
+An operator has requested a new feature or improvement. Your job is to implement it properly and open a pull request for human review.
+
+## Feature Request
+
+{description}
+
+## Your Task
+
+1. Clone the repository and check out `master`.
+2. Understand the existing codebase structure relevant to this feature.
+3. Implement the feature correctly:
+   - Follow the existing code style and conventions in the repository.
+   - Write clean, well-structured code.
+   - Add or update tests if there are existing tests for the affected code.
+   - Do not break existing functionality.
+4. Commit your changes with a clear, descriptive commit message.
+5. Open a pull request against `master` with:
+   - A clear title describing the feature
+   - A description explaining what was added and why
+
+Do not merge the pull request — leave it open for human review.
+
+When the pull request is open, your task is fully complete. Do NOT wait for a reply, ask follow-up questions, or request any confirmation. Stop immediately after confirming the PR URL.
+"""
+
+
+def run_feature(description: str) -> Optional[dict[str, Any]]:
+    """Trigger Agent 3 to implement a new feature. Returns the completed session dict or None."""
+    run_id = str(uuid.uuid4())
+    prompt = FEATURE_PROMPT_TEMPLATE.format(
+        repo=settings.target_repo,
+        description=description,
+    )
+    tags = ["agent:fixer", "mode:feature", f"run:{run_id}"]
+    title = f"[Feature] {description[:60]}"
+
+    logger.info("Feature agent starting | run_id=%s | desc=%s…", run_id, description[:60])
+
+    session_data = devin_client.create_session(
+        prompt=prompt,
+        tags=tags,
+        repos=[settings.target_repo],
+        max_acu_limit=settings.max_acu_fixer,
+        bypass_approval=True,
+        title=title,
+    )
+
+    session_id = session_data["session_id"]
+    devin_url = session_data["url"]
+
+    db.upsert_session(
+        session_id=session_id,
+        role="fixer",
+        devin_url=devin_url,
+        run_id=run_id,
+        issue_id=None,
+        status="new",
+    )
+
+    def _on_poll(s: dict) -> None:
+        db.update_session(
+            session_id=session_id,
+            status=s.get("status", "new"),
+            status_detail=s.get("status_detail"),
+            pr_url=(devin_client.get_pr_urls(s) or [None])[0],
+            acus_consumed=s.get("acus_consumed", 0.0),
+        )
+
+    final = devin_client.poll_until_done(session_id, on_poll=_on_poll)
+
+    pr_urls = devin_client.get_pr_urls(final)
+    pr_url = pr_urls[0] if pr_urls else None
+
+    db.update_session(
+        session_id=session_id,
+        status=final.get("status", "error"),
+        status_detail=final.get("status_detail"),
+        pr_url=pr_url,
+        acus_consumed=final.get("acus_consumed", 0.0),
+    )
+
+    if devin_client.is_done_ok(final) and pr_url:
+        logger.info("Feature session %s succeeded | pr=%s", session_id, pr_url)
+    else:
+        logger.warning(
+            "Feature session %s failed | status=%s detail=%s",
+            session_id, final.get("status"), final.get("status_detail"),
+        )
+
+    return final
+
 
 def _extract_issue_number(github_issue_url: Optional[str]) -> Optional[str]:
     """Extract the issue number from a GitHub issue URL."""

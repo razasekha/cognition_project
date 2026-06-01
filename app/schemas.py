@@ -21,11 +21,28 @@ class InjectRequest(BaseModel):
 
 
 class ScanRequest(BaseModel):
-    pass  # trigger only; no body required
+    prompt: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional focus area for a targeted scan. "
+            "When omitted a general scan across all categories is performed. "
+            "Example: 'authentication and session management code'"
+        ),
+    )
 
 
 class FixRequest(BaseModel):
     pass  # trigger only; issue_id comes from path
+
+
+class FeatureRequest(BaseModel):
+    description: str = Field(
+        description=(
+            "Describe the feature to implement. Be specific about behaviour, "
+            "files to modify, and any acceptance criteria. "
+            "Example: 'Add a /healthz endpoint that returns DB connection status'"
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
