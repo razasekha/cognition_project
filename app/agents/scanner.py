@@ -116,7 +116,15 @@ def run() -> tuple[list[int], dict[str, Any]]:
         status="new",
     )
 
-    final = devin_client.poll_until_done(session_id)
+    def _on_poll(s: dict) -> None:
+        db.update_session(
+            session_id=session_id,
+            status=s.get("status", "new"),
+            status_detail=s.get("status_detail"),
+            acus_consumed=s.get("acus_consumed", 0.0),
+        )
+
+    final = devin_client.poll_until_done(session_id, on_poll=_on_poll)
     db.update_session(
         session_id=session_id,
         status=final.get("status", "error"),
@@ -126,7 +134,7 @@ def run() -> tuple[list[int], dict[str, Any]]:
 
     new_issue_ids: list[int] = []
 
-    if not devin_client.is_success(final):
+    if not devin_client.is_done_ok(final):
         logger.warning("Scanner session %s did not finish successfully.", session_id)
         return new_issue_ids, final
 

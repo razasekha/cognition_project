@@ -44,6 +44,8 @@ A code quality issue has been automatically detected and needs to be fixed. Your
    - Reference to the GitHub issue (if available): `Closes #{github_issue_number}`
 
 Do not merge the pull request — leave it open for human review.
+
+When the pull request is open, your task is fully complete. Do NOT wait for a reply, ask follow-up questions, or request any confirmation. Stop immediately after confirming the PR URL.
 """
 
 GITHUB_ISSUE_SECTION_TEMPLATE = """
@@ -129,7 +131,16 @@ def run(issue_id: int) -> Optional[dict[str, Any]]:
     )
     db.set_issue_fixing(issue_id, session_id)
 
-    final = devin_client.poll_until_done(session_id)
+    def _on_poll(s: dict) -> None:
+        db.update_session(
+            session_id=session_id,
+            status=s.get("status", "new"),
+            status_detail=s.get("status_detail"),
+            pr_url=(devin_client.get_pr_urls(s) or [None])[0],
+            acus_consumed=s.get("acus_consumed", 0.0),
+        )
+
+    final = devin_client.poll_until_done(session_id, on_poll=_on_poll)
 
     pr_urls = devin_client.get_pr_urls(final)
     pr_url = pr_urls[0] if pr_urls else None
@@ -142,7 +153,7 @@ def run(issue_id: int) -> Optional[dict[str, Any]]:
         acus_consumed=final.get("acus_consumed", 0.0),
     )
 
-    if devin_client.is_success(final) and pr_url:
+    if devin_client.is_done_ok(final) and pr_url:
         db.set_issue_fixed(issue_id, pr_url)
         logger.info(
             "Fixer session %s succeeded | issue=%d | pr=%s | acus=%.2f",

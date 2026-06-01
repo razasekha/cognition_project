@@ -202,6 +202,16 @@ def api_metrics() -> dict[str, Any]:
     return db.get_metrics()
 
 
+@app.get("/api/state")
+def api_state() -> dict[str, Any]:
+    """Combined snapshot for the Control Center — sessions, issues, and metrics in one call."""
+    return {
+        "sessions": db.get_all_sessions(),
+        "issues": db.get_all_issues(),
+        "metrics": db.get_metrics(),
+    }
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
     issues = db.get_all_issues()

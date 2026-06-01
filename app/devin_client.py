@@ -5,7 +5,7 @@ All three agents call these helpers — create_session, get_session, poll_until_
 
 import logging
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import requests
 
@@ -19,6 +19,10 @@ ORG = settings.devin_org_id
 TERMINAL_STATUSES = {"exit", "error", "suspended"}
 SUCCESS_STATUS = "exit"
 SUCCESS_DETAIL = "finished"
+# Treat running/waiting_for_user as soft-done: Devin completed its work and
+# is waiting for a conversational reply.  The artifacts (commits, PRs,
+# structured_output) are already present, so we can return safely.
+SOFT_DONE_DETAIL = "waiting_for_user"
 
 
 def _headers() -> dict[str, str]:
@@ -89,11 +93,15 @@ def poll_until_done(
     session_id: str,
     interval: Optional[int] = None,
     timeout: Optional[int] = None,
+    on_poll: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> dict[str, Any]:
     """Block until the session reaches a terminal state, then return full session data.
 
-    Returns the session dict. Callers check session["status"] and session["status_detail"]
-    to determine success vs failure.
+    on_poll is called every iteration with the latest session dict so callers
+    can persist live status to the DB without extra API calls.
+
+    Returns the session dict. Callers check is_success / is_done_ok to determine
+    how to handle the result.
     """
     poll_every = interval or settings.poll_interval_seconds
     max_wait = timeout or settings.poll_timeout_seconds
@@ -106,6 +114,12 @@ def poll_until_done(
         detail = session.get("status_detail", "")
         logger.debug("Session %s | status=%s detail=%s", session_id, status, detail)
 
+        if on_poll:
+            try:
+                on_poll(session)
+            except Exception as exc:
+                logger.warning("on_poll callback raised: %s", exc)
+
         if status in TERMINAL_STATUSES:
             if status == SUCCESS_STATUS and detail == SUCCESS_DETAIL:
                 logger.info("Session %s finished successfully.", session_id)
@@ -113,6 +127,12 @@ def poll_until_done(
                 logger.warning(
                     "Session %s ended with status=%s detail=%s", session_id, status, detail
                 )
+            return session
+
+        # Soft-done: Devin completed its work and is waiting for a reply.
+        # Artifacts (commits, PRs, structured_output) are already present.
+        if status == "running" and detail == SOFT_DONE_DETAIL:
+            logger.info("Session %s soft-done (waiting_for_user) — treating as complete.", session_id)
             return session
 
         if time.time() > deadline:
@@ -125,10 +145,22 @@ def poll_until_done(
 
 
 def is_success(session: dict[str, Any]) -> bool:
-    """Return True if the session completed successfully."""
+    """Return True if the session exited cleanly with status finished."""
     return (
         session.get("status") == SUCCESS_STATUS
         and session.get("status_detail") == SUCCESS_DETAIL
+    )
+
+
+def is_done_ok(session: dict[str, Any]) -> bool:
+    """Return True if the session completed its work successfully.
+
+    Covers both the clean exit path and the soft-done waiting_for_user path
+    where Devin finished but paused for a conversational reply.
+    """
+    return is_success(session) or (
+        session.get("status") == "running"
+        and session.get("status_detail") == SOFT_DONE_DETAIL
     )
 
 
