@@ -23,6 +23,9 @@ class Settings(BaseSettings):
 
     devin_base_url: str = "https://api.devin.ai/v3"
 
+    max_parallel_fixers: int = 5
+    pr_merge_poll_minutes: int = 2
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

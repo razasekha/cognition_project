@@ -75,7 +75,7 @@ def init_db() -> None:
                 recommendation      TEXT,
                 source_session_id   TEXT,               -- Agent 2 session
                 github_issue_url    TEXT,
-                status              TEXT NOT NULL DEFAULT 'open',   -- open|fixing|fixed|failed
+                status              TEXT NOT NULL DEFAULT 'open',   -- open|fixing|pr_created|fixed|failed
                 fix_session_id      TEXT,
                 fix_pr_url          TEXT,
                 created_at          INTEGER NOT NULL,
@@ -84,6 +84,52 @@ def init_db() -> None:
             """
         )
     logger.info("Database initialised at %s", settings.db_path)
+
+
+# ---------------------------------------------------------------------------
+# Display helpers (human-friendly status/detail for sessions)
+# ---------------------------------------------------------------------------
+
+def _display_status(status: str, status_detail: Optional[str]) -> str:
+    """Convert raw Devin status fields into a human-readable status label."""
+    if status in ("exit",) and status_detail == "finished":
+        return "Complete"
+    if status == "running" and status_detail == "waiting_for_user":
+        return "Complete"
+    if status == "running" and status_detail == "working":
+        return "Running"
+    if status == "running" and status_detail == "waiting_for_approval":
+        return "Running"
+    if status in ("error", "suspended"):
+        return "Failed"
+    if status in ("new", "claimed", "resuming"):
+        return "Starting"
+    if status == "running":
+        return "Running"
+    return status.capitalize()
+
+
+def _display_detail(
+    role: str,
+    status: str,
+    status_detail: Optional[str],
+    pr_url: Optional[str],
+    issue_count: int,
+) -> str:
+    """Build a human-readable detail string for a session row."""
+    disp = _display_status(status, status_detail)
+    if role == "scanner":
+        if issue_count > 0:
+            return f"{issue_count} Issue{'s' if issue_count != 1 else ''} Created"
+        if disp == "Complete":
+            return "No issues found"
+        return disp
+    # injector / fixer
+    if pr_url:
+        return "PR Created"
+    if disp == "Complete":
+        return "Complete"
+    return (status_detail or status).replace("_", " ").capitalize()
 
 
 # ---------------------------------------------------------------------------
@@ -147,11 +193,25 @@ def update_session(
 
 
 def get_all_sessions() -> list[dict[str, Any]]:
+    """Return all sessions enriched with display_status and display_detail."""
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM sessions ORDER BY created_at DESC"
         ).fetchall()
-    return [dict(r) for r in rows]
+        result = []
+        for r in rows:
+            d = dict(r)
+            # Count issues created by this session (scanner role)
+            issue_count = conn.execute(
+                "SELECT COUNT(*) FROM issues WHERE source_session_id = ?",
+                (d["session_id"],),
+            ).fetchone()[0]
+            d["display_status"] = _display_status(d["status"], d.get("status_detail"))
+            d["display_detail"] = _display_detail(
+                d["role"], d["status"], d.get("status_detail"), d.get("pr_url"), issue_count
+            )
+            result.append(d)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -216,11 +276,28 @@ def set_issue_fixing(issue_id: int, fix_session_id: str) -> None:
         )
 
 
-def set_issue_fixed(issue_id: int, fix_pr_url: str) -> None:
+def set_issue_pr_created(issue_id: int, fix_pr_url: str) -> None:
+    """Mark issue as having a PR open but not yet merged."""
     now = int(time.time())
     with get_conn() as conn:
         conn.execute(
-            "UPDATE issues SET status = 'fixed', fix_pr_url = ?, updated_at = ? WHERE id = ?",
+            "UPDATE issues SET status = 'pr_created', fix_pr_url = ?, updated_at = ? WHERE id = ?",
+            (fix_pr_url, now, issue_id),
+        )
+
+
+def set_issue_fixed(issue_id: int, fix_pr_url: Optional[str] = None) -> None:
+    """Mark issue as fixed (PR merged). Optionally update the PR URL."""
+    now = int(time.time())
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE issues SET
+                status     = 'fixed',
+                fix_pr_url = COALESCE(?, fix_pr_url),
+                updated_at = ?
+            WHERE id = ?
+            """,
             (fix_pr_url, now, issue_id),
         )
 
@@ -241,6 +318,7 @@ def get_issue(issue_id: int) -> Optional[dict[str, Any]]:
 
 
 def get_all_issues() -> list[dict[str, Any]]:
+    """Return all issues sorted by Time Identified (newest first)."""
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM issues ORDER BY created_at DESC"
@@ -256,28 +334,53 @@ def get_open_issues() -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+def get_issues_by_status(status: str) -> list[dict[str, Any]]:
+    """Return all issues with the given status, ordered oldest first."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM issues WHERE status = ? ORDER BY created_at ASC",
+            (status,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ---------------------------------------------------------------------------
-# Metrics aggregation
+# Metrics aggregation (ACUs removed)
 # ---------------------------------------------------------------------------
 
 def get_metrics() -> dict[str, Any]:
     with get_conn() as conn:
         total_issues = conn.execute("SELECT COUNT(*) FROM issues").fetchone()[0]
-        fixed = conn.execute("SELECT COUNT(*) FROM issues WHERE status = 'fixed'").fetchone()[0]
-        failed = conn.execute("SELECT COUNT(*) FROM issues WHERE status = 'failed'").fetchone()[0]
-        open_cnt = conn.execute("SELECT COUNT(*) FROM issues WHERE status = 'open'").fetchone()[0]
-        fixing_cnt = conn.execute("SELECT COUNT(*) FROM issues WHERE status = 'fixing'").fetchone()[0]
+        fixed = conn.execute(
+            "SELECT COUNT(*) FROM issues WHERE status = 'fixed'"
+        ).fetchone()[0]
+        pr_created_cnt = conn.execute(
+            "SELECT COUNT(*) FROM issues WHERE status = 'pr_created'"
+        ).fetchone()[0]
+        failed = conn.execute(
+            "SELECT COUNT(*) FROM issues WHERE status = 'failed'"
+        ).fetchone()[0]
+        open_cnt = conn.execute(
+            "SELECT COUNT(*) FROM issues WHERE status = 'open'"
+        ).fetchone()[0]
+        fixing_cnt = conn.execute(
+            "SELECT COUNT(*) FROM issues WHERE status = 'fixing'"
+        ).fetchone()[0]
 
         total_sessions = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        # "successful" = exit/finished OR soft-done waiting_for_user
         success_sessions = conn.execute(
-            "SELECT COUNT(*) FROM sessions WHERE status = 'exit' AND status_detail = 'finished'"
+            """SELECT COUNT(*) FROM sessions
+               WHERE (status = 'exit' AND status_detail = 'finished')
+                  OR (status = 'running' AND status_detail = 'waiting_for_user')"""
         ).fetchone()[0]
         active_sessions = conn.execute(
-            "SELECT COUNT(*) FROM sessions WHERE status NOT IN ('exit','error','suspended')"
+            """SELECT COUNT(*) FROM sessions
+               WHERE status NOT IN ('exit','error','suspended')
+                 AND status_detail NOT IN ('finished','waiting_for_user')"""
         ).fetchone()[0]
-        total_acus = conn.execute("SELECT COALESCE(SUM(acus_consumed), 0) FROM sessions").fetchone()[0]
 
-        # MTTR: average seconds from issue created_at to fix_session updated_at for fixed issues
+        # MTTR: average seconds from issue created_at to session completed for fixed issues
         mttr_row = conn.execute(
             """
             SELECT AVG(s.updated_at - i.created_at)
@@ -289,13 +392,14 @@ def get_metrics() -> dict[str, Any]:
         mttr_seconds = mttr_row[0] if mttr_row and mttr_row[0] else 0
 
     success_rate = (success_sessions / total_sessions * 100) if total_sessions else 0
-    fix_rate = (fixed / total_issues * 100) if total_issues else 0
+    fix_rate = ((fixed + pr_created_cnt) / total_issues * 100) if total_issues else 0
 
     return {
         "issues": {
             "total": total_issues,
             "open": open_cnt,
             "fixing": fixing_cnt,
+            "pr_created": pr_created_cnt,
             "fixed": fixed,
             "failed": failed,
             "fix_rate_pct": round(fix_rate, 1),
@@ -305,9 +409,6 @@ def get_metrics() -> dict[str, Any]:
             "active": active_sessions,
             "successful": success_sessions,
             "success_rate_pct": round(success_rate, 1),
-        },
-        "acus": {
-            "total": round(total_acus, 2),
         },
         "mttr_seconds": round(mttr_seconds),
     }

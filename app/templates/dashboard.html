@@ -20,6 +20,7 @@
       --red: #f85149;
       --orange: #e3b341;
       --purple: #bc8cff;
+      --teal: #39d9cc;
       --radius: 8px;
     }
 
@@ -106,19 +107,24 @@
       letter-spacing: 0.04em;
       text-transform: uppercase;
     }
-    .badge-open     { background: rgba(88,166,255,0.15); color: var(--accent); }
-    .badge-fixing   { background: rgba(210,153,34,0.15);  color: var(--yellow); }
-    .badge-fixed    { background: rgba(63,185,80,0.15);   color: var(--green); }
-    .badge-failed   { background: rgba(248,81,73,0.15);   color: var(--red); }
-    .badge-critical { background: rgba(248,81,73,0.2);    color: var(--red); }
-    .badge-high     { background: rgba(227,179,65,0.2);   color: var(--orange); }
-    .badge-medium   { background: rgba(188,140,255,0.2);  color: var(--purple); }
-    .badge-low      { background: rgba(139,148,158,0.2);  color: var(--muted); }
-    .badge-exit     { background: rgba(63,185,80,0.15);   color: var(--green); }
-    .badge-running  { background: rgba(210,153,34,0.15);  color: var(--yellow); }
-    .badge-new      { background: rgba(139,148,158,0.15); color: var(--muted); }
-    .badge-error    { background: rgba(248,81,73,0.15);   color: var(--red); }
-    .badge-suspended{ background: rgba(248,81,73,0.15);   color: var(--red); }
+    .badge-open       { background: rgba(88,166,255,0.15);  color: var(--accent); }
+    .badge-fixing     { background: rgba(210,153,34,0.15);  color: var(--yellow); }
+    .badge-pr-created { background: rgba(57,217,204,0.15);  color: var(--teal); }
+    .badge-fixed      { background: rgba(63,185,80,0.15);   color: var(--green); }
+    .badge-failed     { background: rgba(248,81,73,0.15);   color: var(--red); }
+    .badge-critical   { background: rgba(248,81,73,0.2);    color: var(--red); }
+    .badge-high       { background: rgba(227,179,65,0.2);   color: var(--orange); }
+    .badge-medium     { background: rgba(188,140,255,0.2);  color: var(--purple); }
+    .badge-low        { background: rgba(139,148,158,0.2);  color: var(--muted); }
+    .badge-Complete   { background: rgba(63,185,80,0.15);   color: var(--green); }
+    .badge-Running    { background: rgba(210,153,34,0.15);  color: var(--yellow); }
+    .badge-Starting   { background: rgba(139,148,158,0.15); color: var(--muted); }
+    .badge-Failed     { background: rgba(248,81,73,0.15);   color: var(--red); }
+    .badge-exit       { background: rgba(63,185,80,0.15);   color: var(--green); }
+    .badge-running    { background: rgba(210,153,34,0.15);  color: var(--yellow); }
+    .badge-new        { background: rgba(139,148,158,0.15); color: var(--muted); }
+    .badge-error      { background: rgba(248,81,73,0.15);   color: var(--red); }
+    .badge-suspended  { background: rgba(248,81,73,0.15);   color: var(--red); }
 
     /* ── Metric cards ── */
     .cards {
@@ -156,6 +162,7 @@
     .value-red    { color: var(--red); }
     .value-blue   { color: var(--accent); }
     .value-purple { color: var(--purple); }
+    .value-teal   { color: var(--teal); }
 
     .progress-bar-wrap {
       background: var(--border); border-radius: 4px; height: 5px;
@@ -357,52 +364,49 @@
 
   {% set m = metrics %}
 
-  <!-- Metric cards -->
+  <!-- Metric cards (no ACUs) -->
   <div class="cards">
     <div class="card">
       <div class="label">Issues Found</div>
-      <div class="value value-blue" id="ov-total">{{ m.issues.total }}</div>
+      <div class="value value-blue">{{ m.issues.total }}</div>
       <div class="sub">All time</div>
     </div>
     <div class="card">
       <div class="label">Fixed</div>
-      <div class="value value-green" id="ov-fixed">{{ m.issues.fixed }}</div>
+      <div class="value value-green">{{ m.issues.fixed }}</div>
       <div class="progress-bar-wrap">
-        <div class="progress-bar-fill" id="ov-fix-bar" style="width:{{ m.issues.fix_rate_pct }}%"></div>
+        <div class="progress-bar-fill" style="width:{{ m.issues.fix_rate_pct }}%"></div>
       </div>
-      <div class="sub" id="ov-fix-rate">{{ m.issues.fix_rate_pct }}% fix rate</div>
+      <div class="sub">{{ m.issues.fix_rate_pct }}% fix rate</div>
+    </div>
+    <div class="card">
+      <div class="label">PR Created</div>
+      <div class="value value-teal">{{ m.issues.pr_created }}</div>
+      <div class="sub">Awaiting merge</div>
     </div>
     <div class="card">
       <div class="label">In Progress</div>
-      <div class="value value-yellow" id="ov-fixing">{{ m.issues.fixing }}</div>
+      <div class="value value-yellow">{{ m.issues.fixing }}</div>
       <div class="sub">Being remediated</div>
     </div>
     <div class="card">
       <div class="label">Failed</div>
-      <div class="value" id="ov-failed"
-        style="color:{{ 'var(--red)' if m.issues.failed > 0 else 'var(--green)' }}">{{ m.issues.failed }}</div>
+      <div class="value" style="color:{{ 'var(--red)' if m.issues.failed > 0 else 'var(--green)' }}">{{ m.issues.failed }}</div>
       <div class="sub">Remediation errors</div>
     </div>
     <div class="card">
       <div class="label">Sessions</div>
-      <div class="value value-blue" id="ov-sessions">{{ m.sessions.total }}</div>
-      <div class="sub" id="ov-sess-rate">{{ m.sessions.success_rate_pct }}% success rate</div>
+      <div class="value value-blue">{{ m.sessions.total }}</div>
+      <div class="sub">{{ m.sessions.success_rate_pct }}% success rate</div>
     </div>
     <div class="card">
       <div class="label">Active Sessions</div>
-      <div class="value" id="ov-active"
-        style="color:{{ 'var(--yellow)' if m.sessions.active > 0 else 'var(--green)' }}">{{ m.sessions.active }}</div>
+      <div class="value" style="color:{{ 'var(--yellow)' if m.sessions.active > 0 else 'var(--green)' }}">{{ m.sessions.active }}</div>
       <div class="sub">Running now</div>
     </div>
     <div class="card">
-      <div class="label">ACUs Consumed</div>
-      <div class="value value-purple" id="ov-acus">{{ m.acus.total }}</div>
-      <div class="sub">Compute units total</div>
-    </div>
-    <div class="card">
       <div class="label">Avg Time to Fix</div>
-      <div class="value" id="ov-mttr"
-        style="color:{{ 'var(--yellow)' if m.mttr_seconds > 3600 else ('var(--green)' if m.mttr_seconds > 0 else 'var(--muted)') }}">
+      <div class="value" style="color:{{ 'var(--yellow)' if m.mttr_seconds > 3600 else ('var(--green)' if m.mttr_seconds > 0 else 'var(--muted)') }}">
         {% if m.mttr_seconds > 3600 %}{{ m.mttr_seconds // 3600 }}h {{ (m.mttr_seconds % 3600) // 60 }}m
         {% elif m.mttr_seconds > 0 %}{{ m.mttr_seconds // 60 }}m {{ m.mttr_seconds % 60 }}s
         {% else %}—{% endif %}
@@ -411,7 +415,7 @@
     </div>
   </div>
 
-  <!-- Issues table -->
+  <!-- Issues table with Time Identified column -->
   <section>
     <h2>Issues Log</h2>
     <div class="table-wrap">
@@ -420,18 +424,29 @@
         <thead>
           <tr>
             <th>#</th><th>Severity</th><th>Category</th><th>Description</th>
-            <th>File</th><th>Status</th><th>GitHub Issue</th><th>Fix PR</th>
+            <th>File</th><th>Status</th><th>Time Identified</th><th>GitHub Issue</th><th>Fix PR</th>
           </tr>
         </thead>
-        <tbody id="ov-issues-body">
+        <tbody>
           {% for issue in issues %}
           <tr>
             <td>{{ issue.id }}</td>
             <td><span class="badge badge-{{ issue.severity }}">{{ issue.severity }}</span></td>
             <td>{{ issue.category }}</td>
-            <td><span class="truncate" title="{{ issue.description }}" style="max-width:260px;">{{ issue.description }}</span></td>
+            <td><span class="truncate" title="{{ issue.description }}" style="max-width:240px;">{{ issue.description }}</span></td>
             <td><code style="font-size:0.76rem;">{{ issue.file or '—' }}{% if issue.line %}:{{ issue.line }}{% endif %}</code></td>
-            <td><span class="badge badge-{{ issue.status }}">{{ issue.status }}</span></td>
+            <td>
+              {% if issue.status == 'pr_created' %}
+                <span class="badge badge-pr-created">PR Created</span>
+              {% elif issue.status == 'fixed' %}
+                <span class="badge badge-fixed">Fixed</span>
+              {% else %}
+                <span class="badge badge-{{ issue.status }}">{{ issue.status }}</span>
+              {% endif %}
+            </td>
+            <td style="white-space:nowrap;font-size:0.78rem;color:var(--muted);">
+              {{ issue.created_at | int | datetimeformat if issue.created_at else '—' }}
+            </td>
             <td>{% if issue.github_issue_url %}<a href="{{ issue.github_issue_url }}" target="_blank">View ↗</a>{% else %}—{% endif %}</td>
             <td>{% if issue.fix_pr_url %}<a href="{{ issue.fix_pr_url }}" target="_blank">PR ↗</a>{% else %}—{% endif %}</td>
           </tr>
@@ -444,7 +459,7 @@
     </div>
   </section>
 
-  <!-- Sessions table -->
+  <!-- Sessions table (human-friendly, no ACUs) -->
   <section>
     <h2>Devin Sessions</h2>
     <div class="table-wrap">
@@ -453,17 +468,16 @@
         <thead>
           <tr>
             <th>Session ID</th><th>Role</th><th>Status</th>
-            <th>Detail</th><th>ACUs</th><th>PR</th><th>Devin Link</th>
+            <th>Detail</th><th>PR</th><th>Devin Link</th>
           </tr>
         </thead>
-        <tbody id="ov-sessions-body">
+        <tbody>
           {% for s in sessions %}
           <tr>
             <td><code style="font-size:0.74rem;">{{ s.session_id[:22] }}…</code></td>
             <td><span class="role-{{ s.role }}">{{ s.role }}</span></td>
-            <td><span class="badge badge-{{ s.status }}">{{ s.status }}</span></td>
-            <td>{{ s.status_detail or '—' }}</td>
-            <td>{{ '%.2f'|format(s.acus_consumed) }}</td>
+            <td><span class="badge badge-{{ s.display_status }}">{{ s.display_status }}</span></td>
+            <td>{{ s.display_detail }}</td>
             <td>{% if s.pr_url %}<a href="{{ s.pr_url }}" target="_blank">PR ↗</a>{% else %}—{% endif %}</td>
             <td>{% if s.devin_url %}<a href="{{ s.devin_url }}" target="_blank">Open ↗</a>{% else %}—{% endif %}</td>
           </tr>
@@ -535,7 +549,7 @@
       </div>
     </div>
 
-    <!-- ── Quick metrics (live) ── -->
+    <!-- ── Quick metrics (live, no ACUs) ── -->
     <div class="cc-card">
       <h3>
         <span class="icon" style="background:rgba(188,140,255,0.15);">📊</span>
@@ -551,12 +565,12 @@
           <div style="font-size:1.6rem;font-weight:700;color:var(--green);" id="cc-fixed">—</div>
         </div>
         <div>
-          <div style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Active</div>
-          <div style="font-size:1.6rem;font-weight:700;color:var(--yellow);" id="cc-active">—</div>
+          <div style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">PR Created</div>
+          <div style="font-size:1.6rem;font-weight:700;color:var(--teal);" id="cc-pr-created">—</div>
         </div>
         <div>
-          <div style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">ACUs</div>
-          <div style="font-size:1.6rem;font-weight:700;color:var(--purple);" id="cc-acus">—</div>
+          <div style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Active</div>
+          <div style="font-size:1.6rem;font-weight:700;color:var(--yellow);" id="cc-active">—</div>
         </div>
       </div>
     </div>
@@ -598,11 +612,6 @@ function setFeedback(id, msg, isErr) {
   setTimeout(() => { el.className = 'cc-feedback'; }, 6000);
 }
 
-function fmtStatus(status, detail) {
-  const d = detail ? ` / ${detail}` : '';
-  return (status || '?') + d;
-}
-
 function roleIcon(role) {
   return role === 'injector' ? '💉' : role === 'scanner' ? '🔍' : '🔧';
 }
@@ -612,12 +621,24 @@ function roleColor(role) {
 }
 
 function isActive(s) {
+  // Use raw status for spinner logic
   return !['exit','error','suspended'].includes(s.status) &&
-         s.status_detail !== 'finished';
+         s.status_detail !== 'finished' &&
+         s.status_detail !== 'waiting_for_user';
 }
 
-function fmtAcus(n) {
-  return n != null ? parseFloat(n).toFixed(2) : '0.00';
+function fmtTs(epoch) {
+  if (!epoch) return '—';
+  const d = new Date(epoch * 1000);
+  return d.toLocaleString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+}
+
+function statusBadgeHtml(statusRaw, displayStatus) {
+  const label = displayStatus || statusRaw || '?';
+  return `<span class="badge badge-${label}" style="font-size:0.68rem;">${label}</span>`;
 }
 
 // ════════════════════════════════════════════════════════
@@ -675,21 +696,18 @@ async function doFix() {
 // ════════════════════════════════════════════════════════
 //  Live polling
 // ════════════════════════════════════════════════════════
-let lastSessions = [];
-
 async function pollState() {
   try {
     const r = await fetch('/api/state');
     if (!r.ok) return;
     const {sessions, issues, metrics} = await r.json();
-    lastSessions = sessions || [];
 
     // Update metrics strip
     const m = metrics || {};
-    document.getElementById('cc-total').textContent  = (m.issues || {}).total  ?? '—';
-    document.getElementById('cc-fixed').textContent  = (m.issues || {}).fixed  ?? '—';
-    document.getElementById('cc-active').textContent = (m.sessions || {}).active ?? '—';
-    document.getElementById('cc-acus').textContent   = ((m.acus || {}).total ?? 0).toFixed(2);
+    document.getElementById('cc-total').textContent      = (m.issues || {}).total      ?? '—';
+    document.getElementById('cc-fixed').textContent      = (m.issues || {}).fixed      ?? '—';
+    document.getElementById('cc-pr-created').textContent = (m.issues || {}).pr_created ?? '—';
+    document.getElementById('cc-active').textContent     = (m.sessions || {}).active   ?? '—';
 
     // Update fix-select with open/failed issues
     const sel = document.getElementById('fix-select');
@@ -704,9 +722,9 @@ async function pollState() {
       if (openIssues.find(i => i.id == prev)) sel.value = prev;
     }
 
-    // Render activity cards
+    // Render activity cards — use display_status / display_detail
     const list = document.getElementById('activity-list');
-    const recent = [...sessions].sort((a,b) => (b.updated_at||0) - (a.updated_at||0)).slice(0, 8);
+    const recent = [...(sessions||[])].sort((a,b) => (b.updated_at||0) - (a.updated_at||0)).slice(0, 8);
     if (recent.length === 0) {
       list.innerHTML = '<p class="empty-activity">No sessions yet.</p>';
     } else {
@@ -715,9 +733,8 @@ async function pollState() {
         const iconBg = s.role === 'injector' ? 'rgba(248,81,73,0.15)' :
                        s.role === 'scanner'  ? 'rgba(88,166,255,0.15)' :
                                                'rgba(63,185,80,0.15)';
-        const detailBadge = s.status_detail
-          ? `<span class="badge badge-${s.status_detail.replace(/_/g,'-')}" style="font-size:0.68rem;">${s.status_detail}</span>`
-          : '';
+        const dispStatus = s.display_status || s.status;
+        const dispDetail = s.display_detail || s.status_detail || s.status;
         const prLink = s.pr_url
           ? `<a href="${s.pr_url}" target="_blank" style="font-size:0.74rem;">PR ↗</a>`
           : '';
@@ -732,11 +749,9 @@ async function pollState() {
               ${s.role.charAt(0).toUpperCase()+s.role.slice(1)}
               <span style="font-weight:400;color:var(--muted);font-size:0.75rem;margin-left:6px;">#${s.session_id.slice(0,12)}…</span>
             </div>
-            <div class="ac-meta">${s.status_detail ? s.status_detail.replace(/_/g,' ') : s.status}</div>
+            <div class="ac-meta">${dispDetail}</div>
             <div class="ac-footer">
-              <span class="badge badge-${s.status}" style="font-size:0.68rem;">${s.status}</span>
-              ${detailBadge}
-              <span style="color:var(--muted);">⚡ ${fmtAcus(s.acus_consumed)} ACUs</span>
+              ${statusBadgeHtml(s.status, dispStatus)}
               ${spinner}
               ${prLink}
               ${devinLink}
@@ -753,9 +768,9 @@ async function pollState() {
   }
 }
 
-// Poll every 4 seconds on Control Center, slower on Overview
+// Poll every 4 seconds
 setInterval(pollState, 4000);
-pollState(); // immediate first load
+pollState();
 
 // Overview full-page refresh every 45s (only if on overview tab)
 setInterval(() => {

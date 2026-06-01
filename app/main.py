@@ -12,13 +12,17 @@ GET  /api/metrics      – JSON summary metrics
 GET  /healthz          – Health check
 """
 
+import datetime
 import logging
 import re
+import requests
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -37,24 +41,116 @@ logger = logging.getLogger(__name__)
 templates = Jinja2Templates(directory="app/templates")
 
 
+def _datetimeformat(epoch: int) -> str:
+    """Format a Unix epoch as '02 Jun 2026, 00:10' in local server time."""
+    try:
+        dt = datetime.datetime.fromtimestamp(int(epoch))
+        return dt.strftime("%d %b %Y, %H:%M")
+    except Exception:
+        return "—"
+
+
+templates.env.filters["datetimeformat"] = _datetimeformat
+
+# Shared executor for parallel fixer sessions
+_fixer_pool = ThreadPoolExecutor(max_workers=settings.max_parallel_fixers)
+
+
 # ---------------------------------------------------------------------------
-# Scheduled scan task
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _pr_number_from_url(pr_url: str) -> str | None:
+    """Extract PR number from a GitHub PR URL."""
+    try:
+        return pr_url.rstrip("/").split("/")[-1]
+    except Exception:
+        return None
+
+
+def _is_pr_merged_github(pr_url: str) -> bool:
+    """Check GitHub REST API to see if a PR has been merged. Returns True if merged."""
+    if not settings.github_token:
+        return False
+    m = re.search(r"github\.com/([^/]+/[^/]+)/pull/(\d+)", pr_url)
+    if not m:
+        return False
+    repo, pr_num = m.group(1), m.group(2)
+    url = f"https://api.github.com/repos/{repo}/pulls/{pr_num}"
+    try:
+        resp = requests.get(
+            url,
+            headers={
+                "Authorization": f"token {settings.github_token}",
+                "Accept": "application/vnd.github+json",
+            },
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            return bool(data.get("merged_at"))
+    except Exception as exc:
+        logger.warning("GitHub PR check failed for %s: %s", pr_url, exc)
+    return False
+
+
+def _is_pr_merged_devin(issue: dict) -> bool:
+    """Fallback: check Devin session pull_requests[].pr_state == 'merged'."""
+    fix_session_id = issue.get("fix_session_id")
+    if not fix_session_id:
+        return False
+    from app import devin_client
+    try:
+        session = devin_client.get_session(fix_session_id)
+        prs = session.get("pull_requests") or []
+        for pr in prs:
+            if pr.get("pr_state") == "merged":
+                return True
+    except Exception as exc:
+        logger.warning("Devin PR state check failed for session %s: %s", fix_session_id, exc)
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Scheduled tasks
 # ---------------------------------------------------------------------------
 
 def _scheduled_scan() -> None:
-    """Called by APScheduler on the configured cron. Runs scan then auto-fires fixers."""
+    """Called by APScheduler on the configured cron. Runs scan then auto-fires fixers in parallel."""
     logger.info("Scheduled scan triggered.")
     try:
         new_ids, _ = scanner.run()
         if new_ids:
-            logger.info("Auto-firing fixer for %d new issue(s): %s", len(new_ids), new_ids)
+            logger.info(
+                "Auto-firing %d fixer(s) in parallel: %s", len(new_ids), new_ids
+            )
             for issue_id in new_ids:
-                try:
-                    fixer.run(issue_id)
-                except Exception as exc:
-                    logger.exception("Fixer failed for issue %d: %s", issue_id, exc)
+                _fixer_pool.submit(_safe_fixer_run, issue_id)
     except Exception as exc:
         logger.exception("Scheduled scan failed: %s", exc)
+
+
+def _poll_pr_merges() -> None:
+    """Poll GitHub (or Devin fallback) for merged PRs and flip status to 'fixed'."""
+    issues = db.get_issues_by_status("pr_created")
+    if not issues:
+        return
+    logger.info("PR merge poll: checking %d open PR(s).", len(issues))
+    for issue in issues:
+        pr_url = issue.get("fix_pr_url")
+        if not pr_url:
+            continue
+        merged = _is_pr_merged_github(pr_url) or _is_pr_merged_devin(issue)
+        if merged:
+            logger.info("Issue %d PR merged — marking fixed. PR: %s", issue["id"], pr_url)
+            db.set_issue_fixed(issue["id"])
+
+
+def _safe_fixer_run(issue_id: int) -> None:
+    try:
+        fixer.run(issue_id)
+    except Exception as exc:
+        logger.exception("Fixer failed for issue %d: %s", issue_id, exc)
 
 
 def _parse_cron(cron_expr: str) -> CronTrigger:
@@ -84,10 +180,21 @@ async def lifespan(app: FastAPI):
     db.init_db()
     trigger = _parse_cron(settings.scan_cron)
     scheduler.add_job(_scheduled_scan, trigger, id="scanner", replace_existing=True)
+    scheduler.add_job(
+        _poll_pr_merges,
+        IntervalTrigger(minutes=settings.pr_merge_poll_minutes),
+        id="pr_merge_poller",
+        replace_existing=True,
+    )
     scheduler.start()
-    logger.info("APScheduler started. Scan cron: %s", settings.scan_cron)
+    logger.info(
+        "APScheduler started. Scan cron: %s | PR merge poll: every %d min",
+        settings.scan_cron,
+        settings.pr_merge_poll_minutes,
+    )
     yield
     scheduler.shutdown(wait=False)
+    _fixer_pool.shutdown(wait=False)
     logger.info("APScheduler stopped.")
 
 
@@ -114,21 +221,15 @@ def _bg_scan() -> None:
     try:
         new_ids, _ = scanner.run()
         if new_ids:
-            logger.info("Scan found %d new issue(s); firing fixers.", len(new_ids))
+            logger.info("Scan found %d new issue(s); firing fixers in parallel.", len(new_ids))
             for issue_id in new_ids:
-                try:
-                    fixer.run(issue_id)
-                except Exception as exc:
-                    logger.exception("Fixer failed for issue %d: %s", issue_id, exc)
+                _fixer_pool.submit(_safe_fixer_run, issue_id)
     except Exception as exc:
         logger.exception("Manual scan failed: %s", exc)
 
 
 def _bg_fix(issue_id: int) -> None:
-    try:
-        fixer.run(issue_id)
-    except Exception as exc:
-        logger.exception("Fixer background task failed for issue %d: %s", issue_id, exc)
+    _fixer_pool.submit(_safe_fixer_run, issue_id)
 
 
 # ---------------------------------------------------------------------------

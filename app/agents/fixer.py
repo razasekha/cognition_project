@@ -154,10 +154,10 @@ def run(issue_id: int) -> Optional[dict[str, Any]]:
     )
 
     if devin_client.is_done_ok(final) and pr_url:
-        db.set_issue_fixed(issue_id, pr_url)
+        db.set_issue_pr_created(issue_id, pr_url)
         logger.info(
-            "Fixer session %s succeeded | issue=%d | pr=%s | acus=%.2f",
-            session_id, issue_id, pr_url, final.get("acus_consumed", 0.0),
+            "Fixer session %s succeeded | issue=%d | pr=%s",
+            session_id, issue_id, pr_url,
         )
     else:
         db.set_issue_failed(issue_id)

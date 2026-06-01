@@ -112,5 +112,4 @@ class IssueOut(BaseModel):
 class MetricsOut(BaseModel):
     issues: dict[str, Any]
     sessions: dict[str, Any]
-    acus: dict[str, Any]
     mttr_seconds: int
