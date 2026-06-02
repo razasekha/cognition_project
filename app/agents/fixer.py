@@ -132,7 +132,7 @@ def run_feature(description: str) -> Optional[dict[str, Any]]:
 
     db.upsert_session(
         session_id=session_id,
-        role="fixer",
+        role="feature",
         devin_url=devin_url,
         run_id=run_id,
         issue_id=None,

@@ -90,7 +90,11 @@ def init_db() -> None:
 # Display helpers (human-friendly status/detail for sessions)
 # ---------------------------------------------------------------------------
 
-def _display_status(status: str, status_detail: Optional[str]) -> str:
+def _display_status(
+    status: str,
+    status_detail: Optional[str],
+    pr_url: Optional[str] = None,
+) -> str:
     """Convert raw Devin status fields into a human-readable status label."""
     if status in ("exit",) and status_detail == "finished":
         return "Complete"
@@ -101,7 +105,8 @@ def _display_status(status: str, status_detail: Optional[str]) -> str:
     if status == "running" and status_detail == "waiting_for_approval":
         return "Running"
     if status in ("error", "suspended"):
-        return "Failed"
+        # If a PR was created before the session went terminal, don't label it Failed
+        return "Complete" if pr_url else "Failed"
     if status in ("new", "claimed", "resuming"):
         return "Starting"
     if status == "running":
@@ -117,14 +122,14 @@ def _display_detail(
     issue_count: int,
 ) -> str:
     """Build a human-readable detail string for a session row."""
-    disp = _display_status(status, status_detail)
+    disp = _display_status(status, status_detail, pr_url)
     if role == "scanner":
         if issue_count > 0:
             return f"{issue_count} Issue{'s' if issue_count != 1 else ''} Created"
         if disp == "Complete":
             return "No issues found"
         return disp
-    # injector / fixer
+    # injector / fixer / feature
     if pr_url:
         return "PR Created"
     if disp == "Complete":
@@ -206,7 +211,7 @@ def get_all_sessions() -> list[dict[str, Any]]:
                 "SELECT COUNT(*) FROM issues WHERE source_session_id = ?",
                 (d["session_id"],),
             ).fetchone()[0]
-            d["display_status"] = _display_status(d["status"], d.get("status_detail"))
+            d["display_status"] = _display_status(d["status"], d.get("status_detail"), d.get("pr_url"))
             d["display_detail"] = _display_detail(
                 d["role"], d["status"], d.get("status_detail"), d.get("pr_url"), issue_count
             )
@@ -393,28 +398,30 @@ def get_metrics() -> dict[str, Any]:
                       OR status_detail NOT IN ('finished','waiting_for_user'))"""
         ).fetchone()[0]
 
-        # ── Feature session counts (role=fixer, no linked issue) ──────────
+        # ── Feature session counts (role=feature) ────────────────────────
         # Completed feature = done (exit/finished or waiting_for_user) AND pr opened
         feature_total = conn.execute(
-            "SELECT COUNT(*) FROM sessions WHERE role = 'fixer' AND issue_id IS NULL"
+            "SELECT COUNT(*) FROM sessions WHERE role = 'feature'"
         ).fetchone()[0]
         feature_completed = conn.execute(
             """SELECT COUNT(*) FROM sessions
-               WHERE role = 'fixer' AND issue_id IS NULL AND pr_url IS NOT NULL
+               WHERE role = 'feature' AND pr_url IS NOT NULL
                  AND ((status = 'exit' AND status_detail = 'finished')
-                      OR (status = 'running' AND status_detail = 'waiting_for_user'))"""
+                      OR (status = 'running' AND status_detail = 'waiting_for_user')
+                      OR (status IN ('error','suspended') AND pr_url IS NOT NULL))"""
         ).fetchone()[0]
         feature_in_progress = conn.execute(
             """SELECT COUNT(*) FROM sessions
-               WHERE role = 'fixer' AND issue_id IS NULL
+               WHERE role = 'feature'
                  AND status NOT IN ('exit','error','suspended')
                  AND (status_detail IS NULL
                       OR status_detail NOT IN ('finished','waiting_for_user'))"""
         ).fetchone()[0]
         feature_failed = conn.execute(
             """SELECT COUNT(*) FROM sessions
-               WHERE role = 'fixer' AND issue_id IS NULL
-                 AND status IN ('error','suspended')"""
+               WHERE role = 'feature'
+                 AND status IN ('error','suspended')
+                 AND pr_url IS NULL"""
         ).fetchone()[0]
 
         # ── MTTR ──────────────────────────────────────────────────────────

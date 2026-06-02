@@ -206,6 +206,7 @@
     .role-injector { color: var(--red); font-weight: 600; }
     .role-scanner  { color: var(--accent); font-weight: 600; }
     .role-fixer    { color: var(--green); font-weight: 600; }
+    .role-feature  { color: #a855f7; font-weight: 600; }
 
     /* ── Buttons ── */
     .btn {
@@ -473,7 +474,7 @@
 
   <!-- Issues / Features log tabs -->
   {% set feature_sessions = [] %}
-  {% for s in sessions %}{% if s.role == 'fixer' and s.issue_id is none %}{% set _ = feature_sessions.append(s) %}{% endif %}{% endfor %}
+  {% for s in sessions %}{% if s.role == 'feature' %}{% set _ = feature_sessions.append(s) %}{% endif %}{% endfor %}
 
   <section>
     <h2>Log</h2>
