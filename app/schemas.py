@@ -128,5 +128,6 @@ class IssueOut(BaseModel):
 
 class MetricsOut(BaseModel):
     issues: dict[str, Any]
+    features: dict[str, Any]
     sessions: dict[str, Any]
     mttr_seconds: int

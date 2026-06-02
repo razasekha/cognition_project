@@ -350,6 +350,7 @@ def get_issues_by_status(status: str) -> list[dict[str, Any]]:
 
 def get_metrics() -> dict[str, Any]:
     with get_conn() as conn:
+        # ── Issue counts ──────────────────────────────────────────────────
         total_issues = conn.execute("SELECT COUNT(*) FROM issues").fetchone()[0]
         fixed = conn.execute(
             "SELECT COUNT(*) FROM issues WHERE status = 'fixed'"
@@ -367,8 +368,8 @@ def get_metrics() -> dict[str, Any]:
             "SELECT COUNT(*) FROM issues WHERE status = 'fixing'"
         ).fetchone()[0]
 
+        # ── Session counts ────────────────────────────────────────────────
         total_sessions = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
-        # "successful" = exit/finished OR soft-done waiting_for_user
         success_sessions = conn.execute(
             """SELECT COUNT(*) FROM sessions
                WHERE (status = 'exit' AND status_detail = 'finished')
@@ -377,10 +378,35 @@ def get_metrics() -> dict[str, Any]:
         active_sessions = conn.execute(
             """SELECT COUNT(*) FROM sessions
                WHERE status NOT IN ('exit','error','suspended')
-                 AND status_detail NOT IN ('finished','waiting_for_user')"""
+                 AND (status_detail IS NULL
+                      OR status_detail NOT IN ('finished','waiting_for_user'))"""
         ).fetchone()[0]
 
-        # MTTR: average seconds from issue created_at to session completed for fixed issues
+        # ── Feature session counts (role=fixer, no linked issue) ──────────
+        # Completed feature = done (exit/finished or waiting_for_user) AND pr opened
+        feature_total = conn.execute(
+            "SELECT COUNT(*) FROM sessions WHERE role = 'fixer' AND issue_id IS NULL"
+        ).fetchone()[0]
+        feature_completed = conn.execute(
+            """SELECT COUNT(*) FROM sessions
+               WHERE role = 'fixer' AND issue_id IS NULL AND pr_url IS NOT NULL
+                 AND ((status = 'exit' AND status_detail = 'finished')
+                      OR (status = 'running' AND status_detail = 'waiting_for_user'))"""
+        ).fetchone()[0]
+        feature_in_progress = conn.execute(
+            """SELECT COUNT(*) FROM sessions
+               WHERE role = 'fixer' AND issue_id IS NULL
+                 AND status NOT IN ('exit','error','suspended')
+                 AND (status_detail IS NULL
+                      OR status_detail NOT IN ('finished','waiting_for_user'))"""
+        ).fetchone()[0]
+        feature_failed = conn.execute(
+            """SELECT COUNT(*) FROM sessions
+               WHERE role = 'fixer' AND issue_id IS NULL
+                 AND status IN ('error','suspended')"""
+        ).fetchone()[0]
+
+        # ── MTTR ──────────────────────────────────────────────────────────
         mttr_row = conn.execute(
             """
             SELECT AVG(s.updated_at - i.created_at)
@@ -393,6 +419,8 @@ def get_metrics() -> dict[str, Any]:
 
     success_rate = (success_sessions / total_sessions * 100) if total_sessions else 0
     fix_rate = ((fixed + pr_created_cnt) / total_issues * 100) if total_issues else 0
+    # "in_progress" for issues bar = open + fixing + pr_created
+    in_progress_cnt = open_cnt + fixing_cnt + pr_created_cnt
 
     return {
         "issues": {
@@ -400,9 +428,16 @@ def get_metrics() -> dict[str, Any]:
             "open": open_cnt,
             "fixing": fixing_cnt,
             "pr_created": pr_created_cnt,
+            "in_progress": in_progress_cnt,
             "fixed": fixed,
             "failed": failed,
             "fix_rate_pct": round(fix_rate, 1),
+        },
+        "features": {
+            "total": feature_total,
+            "completed": feature_completed,
+            "in_progress": feature_in_progress,
+            "failed": feature_failed,
         },
         "sessions": {
             "total": total_sessions,

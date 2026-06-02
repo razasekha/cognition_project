@@ -399,48 +399,67 @@
 
   {% set m = metrics %}
 
-  <!-- Metric cards (no ACUs) -->
-  <div class="cards">
-    <div class="card">
-      <div class="label">Issues Found</div>
-      <div class="value value-blue">{{ m.issues.total }}</div>
-      <div class="sub">All time</div>
-    </div>
-    <div class="card">
-      <div class="label">Fixed</div>
-      <div class="value value-green">{{ m.issues.fixed }}</div>
-      <div class="progress-bar-wrap">
-        <div class="progress-bar-fill" style="width:{{ m.issues.fix_rate_pct }}%"></div>
+  <!-- ── Status bars ── -->
+  <div style="margin-bottom:28px; display:flex; flex-direction:column; gap:18px;">
+
+    {# Issues bar #}
+    {% set i = m.issues %}
+    {% set i_total = i.total if i.total > 0 else 1 %}
+    <div>
+      <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px;">
+        <span style="font-size:0.82rem; font-weight:600; color:var(--text);">Issues</span>
+        <span style="font-size:0.78rem; color:var(--muted);">{{ i.total }} total</span>
       </div>
-      <div class="sub">{{ m.issues.fix_rate_pct }}% fix rate</div>
+      <div style="display:flex; height:14px; border-radius:7px; overflow:hidden; background:var(--border);">
+        {% if i.fixed > 0 %}<div title="Fixed: {{ i.fixed }}" style="width:{{ (i.fixed / i_total * 100)|round(1) }}%; background:var(--green);"></div>{% endif %}
+        {% if i.pr_created > 0 %}<div title="PR Created: {{ i.pr_created }}" style="width:{{ (i.pr_created / i_total * 100)|round(1) }}%; background:var(--teal);"></div>{% endif %}
+        {% if i.in_progress > 0 %}<div title="In Progress: {{ i.in_progress }}" style="width:{{ (i.in_progress / i_total * 100)|round(1) }}%; background:var(--yellow);"></div>{% endif %}
+        {% if i.failed > 0 %}<div title="Failed: {{ i.failed }}" style="width:{{ (i.failed / i_total * 100)|round(1) }}%; background:var(--red);"></div>{% endif %}
+      </div>
+      <div style="display:flex; gap:16px; margin-top:6px; flex-wrap:wrap;">
+        <span style="font-size:0.73rem; color:var(--green);">&#9632; Fixed {{ i.fixed }}</span>
+        <span style="font-size:0.73rem; color:var(--teal);">&#9632; PR Created {{ i.pr_created }}</span>
+        <span style="font-size:0.73rem; color:var(--yellow);">&#9632; In Progress {{ i.in_progress }}</span>
+        <span style="font-size:0.73rem; color:var(--red);">&#9632; Failed {{ i.failed }}</span>
+      </div>
+    </div>
+
+    {# Features bar #}
+    {% set f = m.features %}
+    {% set f_total = f.total if f.total > 0 else 1 %}
+    <div>
+      <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px;">
+        <span style="font-size:0.82rem; font-weight:600; color:var(--text);">Features</span>
+        <span style="font-size:0.78rem; color:var(--muted);">{{ f.total }} total</span>
+      </div>
+      <div style="display:flex; height:14px; border-radius:7px; overflow:hidden; background:var(--border);">
+        {% if f.completed > 0 %}<div title="Completed: {{ f.completed }}" style="width:{{ (f.completed / f_total * 100)|round(1) }}%; background:var(--green);"></div>{% endif %}
+        {% if f.in_progress > 0 %}<div title="In Progress: {{ f.in_progress }}" style="width:{{ (f.in_progress / f_total * 100)|round(1) }}%; background:var(--yellow);"></div>{% endif %}
+        {% if f.failed > 0 %}<div title="Failed: {{ f.failed }}" style="width:{{ (f.failed / f_total * 100)|round(1) }}%; background:var(--red);"></div>{% endif %}
+      </div>
+      <div style="display:flex; gap:16px; margin-top:6px; flex-wrap:wrap;">
+        <span style="font-size:0.73rem; color:var(--green);">&#9632; Completed {{ f.completed }}</span>
+        <span style="font-size:0.73rem; color:var(--yellow);">&#9632; In Progress {{ f.in_progress }}</span>
+        <span style="font-size:0.73rem; color:var(--red);">&#9632; Failed {{ f.failed }}</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── 3 summary cards ── -->
+  <div class="cards" style="grid-template-columns:repeat(3,1fr); margin-bottom:32px;">
+    <div class="card">
+      <div class="label">Total Issues Resolved</div>
+      <div class="value value-green">{{ m.issues.fixed }}</div>
+      <div class="sub">{{ m.issues.fix_rate_pct }}% of all issues</div>
     </div>
     <div class="card">
-      <div class="label">PR Created</div>
-      <div class="value value-teal">{{ m.issues.pr_created }}</div>
-      <div class="sub">Awaiting merge</div>
+      <div class="label">Total Features Implemented</div>
+      <div class="value value-blue">{{ m.features.completed }}</div>
+      <div class="sub">{{ m.features.total }} requested</div>
     </div>
     <div class="card">
-      <div class="label">In Progress</div>
-      <div class="value value-yellow">{{ m.issues.fixing }}</div>
-      <div class="sub">Being remediated</div>
-    </div>
-    <div class="card">
-      <div class="label">Failed</div>
-      <div class="value" style="color:{{ 'var(--red)' if m.issues.failed > 0 else 'var(--green)' }}">{{ m.issues.failed }}</div>
-      <div class="sub">Remediation errors</div>
-    </div>
-    <div class="card">
-      <div class="label">Sessions</div>
-      <div class="value value-blue">{{ m.sessions.total }}</div>
-      <div class="sub">{{ m.sessions.success_rate_pct }}% success rate</div>
-    </div>
-    <div class="card">
-      <div class="label">Active Sessions</div>
-      <div class="value" style="color:{{ 'var(--yellow)' if m.sessions.active > 0 else 'var(--green)' }}">{{ m.sessions.active }}</div>
-      <div class="sub">Running now</div>
-    </div>
-    <div class="card">
-      <div class="label">Avg Time to Fix</div>
+      <div class="label">Avg Time to Resolve</div>
       <div class="value" style="color:{{ 'var(--yellow)' if m.mttr_seconds > 3600 else ('var(--green)' if m.mttr_seconds > 0 else 'var(--muted)') }}">
         {% if m.mttr_seconds > 3600 %}{{ m.mttr_seconds // 3600 }}h {{ (m.mttr_seconds % 3600) // 60 }}m
         {% elif m.mttr_seconds > 0 %}{{ m.mttr_seconds // 60 }}m {{ m.mttr_seconds % 60 }}s
