@@ -228,7 +228,10 @@ def _recover_sessions() -> None:
                         session_id, issue_id, pr_url,
                     )
                 else:
-                    db.set_issue_failed(issue_id)
+                    # Only fail if the issue doesn't already have a PR URL
+                    existing = db.get_issue(issue_id)
+                    if existing and not existing.get("fix_pr_url"):
+                        db.set_issue_failed(issue_id)
                     logger.warning(
                         "Recovery: fixer %s for issue %d completed without PR.",
                         session_id, issue_id,
@@ -236,7 +239,10 @@ def _recover_sessions() -> None:
 
             elif status in ("error", "suspended"):
                 if role == "fixer" and issue_id:
-                    db.set_issue_failed(issue_id)
+                    # Only mark failed if no PR already exists for this issue
+                    existing = db.get_issue(issue_id)
+                    if existing and not existing.get("fix_pr_url"):
+                        db.set_issue_failed(issue_id)
                 logger.warning(
                     "Recovery: session %s (%s) is in terminal error state %s/%s.",
                     session_id, role, status, detail,

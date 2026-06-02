@@ -479,14 +479,13 @@
       <table>
         <thead>
           <tr>
-            <th>#</th><th>Severity</th><th>Category</th><th>Description</th>
+            <th>Severity</th><th>Category</th><th>Description</th>
             <th>File</th><th>Status</th><th>Time Identified</th><th>GitHub Issue</th><th>Fix PR</th>
           </tr>
         </thead>
         <tbody>
           {% for issue in issues %}
           <tr>
-            <td>{{ issue.id }}</td>
             <td><span class="badge badge-{{ issue.severity }}">{{ issue.severity }}</span></td>
             <td>{{ issue.category }}</td>
             <td><span class="truncate" title="{{ issue.description }}" style="max-width:240px;">{{ issue.description }}</span></td>
