@@ -418,12 +418,13 @@ def get_metrics() -> dict[str, Any]:
         ).fetchone()[0]
 
         # ── MTTR ──────────────────────────────────────────────────────────
+        # "Resolved" = PR created or merged. Use i.updated_at which is
+        # stamped by set_issue_pr_created / set_issue_fixed.
         mttr_row = conn.execute(
             """
-            SELECT AVG(s.updated_at - i.created_at)
+            SELECT AVG(i.updated_at - i.created_at)
             FROM issues i
-            JOIN sessions s ON s.session_id = i.fix_session_id
-            WHERE i.status = 'fixed'
+            WHERE i.status IN ('pr_created', 'fixed')
             """
         ).fetchone()
         mttr_seconds = mttr_row[0] if mttr_row and mttr_row[0] else 0
