@@ -479,13 +479,16 @@
       <table>
         <thead>
           <tr>
-            <th>Severity</th><th>Category</th><th>Description</th>
-            <th>File</th><th>Status</th><th>Time Identified</th><th>GitHub Issue</th><th>Fix PR</th>
+            <th>Time Identified</th><th>Severity</th><th>Category</th><th>Description</th>
+            <th>File</th><th>Status</th><th>Fix PR</th>
           </tr>
         </thead>
         <tbody>
           {% for issue in issues %}
           <tr>
+            <td style="white-space:nowrap;font-size:0.78rem;color:var(--muted);">
+              {{ issue.created_at | int | datetimeformat if issue.created_at else '—' }}
+            </td>
             <td><span class="badge badge-{{ issue.severity }}">{{ issue.severity }}</span></td>
             <td>{{ issue.category }}</td>
             <td><span class="truncate" title="{{ issue.description }}" style="max-width:240px;">{{ issue.description }}</span></td>
@@ -499,10 +502,6 @@
                 <span class="badge badge-{{ issue.status }}">{{ issue.status }}</span>
               {% endif %}
             </td>
-            <td style="white-space:nowrap;font-size:0.78rem;color:var(--muted);">
-              {{ issue.created_at | int | datetimeformat if issue.created_at else '—' }}
-            </td>
-            <td>{% if issue.github_issue_url %}<a href="{{ issue.github_issue_url }}" target="_blank">View ↗</a>{% else %}—{% endif %}</td>
             <td>{% if issue.fix_pr_url %}<a href="{{ issue.fix_pr_url }}" target="_blank">PR ↗</a>{% else %}—{% endif %}</td>
           </tr>
           {% endfor %}

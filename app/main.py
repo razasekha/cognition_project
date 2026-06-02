@@ -69,26 +69,28 @@ def _pr_number_from_url(pr_url: str) -> str | None:
 
 
 def _is_pr_merged_github(pr_url: str) -> bool:
-    """Check GitHub REST API to see if a PR has been merged. Returns True if merged."""
-    if not settings.github_token:
-        return False
+    """Check GitHub REST API to see if a PR has been merged. Returns True if merged.
+
+    Works with or without a token — public repos can be checked unauthenticated.
+    A token raises the rate limit from 60 to 5 000 req/hour.
+    """
     m = re.search(r"github\.com/([^/]+/[^/]+)/pull/(\d+)", pr_url)
     if not m:
         return False
     repo, pr_num = m.group(1), m.group(2)
     url = f"https://api.github.com/repos/{repo}/pulls/{pr_num}"
+    headers = {"Accept": "application/vnd.github+json"}
+    if settings.github_token:
+        headers["Authorization"] = f"token {settings.github_token}"
     try:
-        resp = requests.get(
-            url,
-            headers={
-                "Authorization": f"token {settings.github_token}",
-                "Accept": "application/vnd.github+json",
-            },
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            return bool(data.get("merged_at"))
+        # Primary check: merged_at timestamp on the PR object
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200 and resp.json().get("merged_at"):
+            return True
+        # Secondary check: dedicated merge-status endpoint (204 = merged, 404 = not)
+        merge_resp = requests.get(url + "/merge", headers=headers, timeout=10)
+        if merge_resp.status_code == 204:
+            return True
     except Exception as exc:
         logger.warning("GitHub PR check failed for %s: %s", pr_url, exc)
     return False
