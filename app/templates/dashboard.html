@@ -615,10 +615,9 @@
 
       <!-- Fix Issue panel -->
       <div class="sub-panel active" id="agent3-panel-fix">
-        <label for="fix-select">Select an open issue to remediate</label>
-        <select id="fix-select">
-          <option value="">— loading issues —</option>
-        </select>
+        <label for="fix-freetext-prompt">Describe the issue to fix</label>
+        <textarea id="fix-freetext-prompt" rows="4"
+          placeholder="e.g. The SESSION_COOKIE_SECURE flag is set to False in config/base.py — it should default to True in production&#10;e.g. db.session.query(Tag).all() in superset/views/tags.py loads all tags without pagination&#10;e.g. yaml.load() in superset/utils/yaml.py should use yaml.safe_load() instead"></textarea>
         <div class="cc-actions" style="margin-top:12px;">
           <button class="btn btn-green" id="fix-btn" onclick="doFix()">🔧 Fix Issue</button>
         </div>
@@ -800,16 +799,23 @@ function setAgent3Mode(mode) {
 }
 
 async function doFix() {
-  const sel = document.getElementById('fix-select');
-  const issueId = sel.value;
-  if (!issueId) { setFeedback('fix-feedback', 'Select an issue first.', true); return; }
+  const desc = document.getElementById('fix-freetext-prompt').value.trim();
+  if (!desc) { setFeedback('fix-feedback', 'Describe the issue to fix first.', true); return; }
   const btn = document.getElementById('fix-btn');
   btn.disabled = true;
   try {
-    const r = await fetch(`/fix/${issueId}`, {method: 'POST'});
+    const r = await fetch('/fix-freetext', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({description: desc}),
+    });
     const d = await r.json();
-    if (r.ok) setFeedback('fix-feedback', d.message || 'Fixer started.');
-    else setFeedback('fix-feedback', d.detail || 'Error.', true);
+    if (r.ok) {
+      setFeedback('fix-feedback', d.message || 'Fix session started.');
+      document.getElementById('fix-freetext-prompt').value = '';
+    } else {
+      setFeedback('fix-feedback', d.detail || 'Error.', true);
+    }
   } catch(e) { setFeedback('fix-feedback', 'Network error.', true); }
   finally { btn.disabled = false; }
 }
@@ -851,19 +857,6 @@ async function pollState() {
     document.getElementById('cc-fixed').textContent      = (m.issues || {}).fixed      ?? '—';
     document.getElementById('cc-pr-created').textContent = (m.issues || {}).pr_created ?? '—';
     document.getElementById('cc-active').textContent     = (m.sessions || {}).active   ?? '—';
-
-    // Update fix-select with open/failed issues
-    const sel = document.getElementById('fix-select');
-    const prev = sel.value;
-    const openIssues = (issues || []).filter(i => i.status === 'open' || i.status === 'failed');
-    if (openIssues.length === 0) {
-      sel.innerHTML = '<option value="">— no open issues —</option>';
-    } else {
-      sel.innerHTML = openIssues.map(i =>
-        `<option value="${i.id}">[${i.severity.toUpperCase()}] #${i.id} ${i.description.slice(0,60)}</option>`
-      ).join('');
-      if (openIssues.find(i => i.id == prev)) sel.value = prev;
-    }
 
     // Render activity cards — use display_status / display_detail
     const list = document.getElementById('activity-list');

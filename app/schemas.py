@@ -35,6 +35,12 @@ class FixRequest(BaseModel):
     pass  # trigger only; issue_id comes from path
 
 
+class FixFreetextRequest(BaseModel):
+    description: str = Field(
+        description="Describe the issue to fix in plain language. Be specific about what is wrong and where."
+    )
+
+
 class FeatureRequest(BaseModel):
     description: str = Field(
         description=(

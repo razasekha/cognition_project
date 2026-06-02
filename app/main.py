@@ -30,7 +30,7 @@ from fastapi.templating import Jinja2Templates
 from app import db
 from app.agents import fixer, injector, scanner
 from app.config import settings
-from app.schemas import InjectRequest, MetricsOut, ScanRequest, FeatureRequest
+from app.schemas import InjectRequest, MetricsOut, ScanRequest, FeatureRequest, FixFreetextRequest
 
 logging.basicConfig(
     level=logging.INFO,
@@ -438,6 +438,13 @@ def _bg_feature(description: str) -> None:
         logger.exception("Feature background task failed: %s", exc)
 
 
+def _bg_freetext_fix(description: str) -> None:
+    try:
+        fixer.run_freetext_fix(description)
+    except Exception as exc:
+        logger.exception("Freetext fix background task failed: %s", exc)
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -470,6 +477,18 @@ def scan(background_tasks: BackgroundTasks, body: ScanRequest = ScanRequest()) -
         "message": f"Scanner ({mode}) started in background. Agent 3 will auto-fire for new findings.",
         "target_repo": settings.target_repo,
         "focus": focus,
+    }
+
+
+@app.post("/fix-freetext")
+def fix_freetext(body: FixFreetextRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    """Trigger Agent 3 to fix an issue described in free text."""
+    logger.info("POST /fix-freetext | description=%s…", body.description[:60])
+    background_tasks.add_task(_bg_freetext_fix, body.description)
+    return {
+        "message": "Fix session started in background.",
+        "description": body.description[:120],
+        "target_repo": settings.target_repo,
     }
 
 
