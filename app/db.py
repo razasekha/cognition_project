@@ -211,7 +211,11 @@ def get_all_sessions() -> list[dict[str, Any]]:
                 "SELECT COUNT(*) FROM issues WHERE source_session_id = ?",
                 (d["session_id"],),
             ).fetchone()[0]
-            d["display_status"] = _display_status(d["status"], d.get("status_detail"), d.get("pr_url"))
+            disp_status = _display_status(d["status"], d.get("status_detail"), d.get("pr_url"))
+            # Scanner that produced issues counts as Complete regardless of Devin's exit state
+            if d["role"] == "scanner" and issue_count > 0 and disp_status == "Failed":
+                disp_status = "Complete"
+            d["display_status"] = disp_status
             d["display_detail"] = _display_detail(
                 d["role"], d["status"], d.get("status_detail"), d.get("pr_url"), issue_count
             )
