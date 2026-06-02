@@ -471,12 +471,29 @@
 
   </div>
 
-  <!-- Issues table with filters -->
+  <!-- Issues / Features log tabs -->
+  {% set feature_sessions = [] %}
+  {% for s in sessions %}{% if s.role == 'fixer' and s.issue_id is none %}{% set _ = feature_sessions.append(s) %}{% endif %}{% endfor %}
+
   <section>
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:10px;">
-      <h2 style="margin-bottom:0; border-bottom:none; padding-bottom:0;">Issues Log</h2>
-      {% if issues %}
-      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+    <h2>Log</h2>
+
+    <!-- Log sub-tabs -->
+    <div style="display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:16px;">
+      <button class="log-tab-btn active" id="log-tab-issues" onclick="switchLogTab('issues')"
+        style="padding:8px 18px; background:none; border:none; border-bottom:2px solid var(--accent); color:var(--accent); font-size:0.86rem; font-weight:600; cursor:pointer;">
+        Issues <span style="opacity:0.7;">({{ issues | length }})</span>
+      </button>
+      <button class="log-tab-btn" id="log-tab-features" onclick="switchLogTab('features')"
+        style="padding:8px 18px; background:none; border:none; border-bottom:2px solid transparent; color:var(--muted); font-size:0.86rem; font-weight:600; cursor:pointer;">
+        Features <span style="opacity:0.7;">({{ feature_sessions | length }})</span>
+      </button>
+    </div>
+
+    <!-- Issues panel -->
+    <div id="log-panel-issues">
+      <div style="display:flex; justify-content:flex-end; margin-bottom:10px; gap:8px; flex-wrap:wrap; align-items:center;">
+        {% if issues %}
         <select id="filter-status" onchange="filterIssues()" style="width:auto; padding:5px 10px; font-size:0.78rem; border-radius:6px;">
           <option value="">All Statuses</option>
           <option value="open">Open</option>
@@ -496,52 +513,80 @@
           <option value="">All Categories</option>
           {% set cats = [] %}
           {% for issue in issues %}{% if issue.category and issue.category not in cats %}{% set _ = cats.append(issue.category) %}{% endif %}{% endfor %}
-          {% for cat in cats | sort %}
-          <option value="{{ cat }}">{{ cat }}</option>
-          {% endfor %}
+          {% for cat in cats | sort %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
         </select>
         <span id="filter-count" style="font-size:0.76rem; color:var(--muted);"></span>
+        {% endif %}
       </div>
-      {% endif %}
+      <div class="table-wrap">
+        {% if issues %}
+        <table id="issues-table">
+          <thead>
+            <tr>
+              <th>Time Identified</th><th>Severity</th><th>Category</th><th>Description</th>
+              <th>File</th><th>Status</th><th>Fix PR</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for issue in issues %}
+            <tr data-status="{{ issue.status }}" data-severity="{{ issue.severity }}" data-category="{{ issue.category }}">
+              <td style="white-space:nowrap;font-size:0.78rem;color:var(--muted);">
+                {{ issue.created_at | int | datetimeformat if issue.created_at else '—' }}
+              </td>
+              <td><span class="badge badge-{{ issue.severity }}">{{ issue.severity }}</span></td>
+              <td>{{ issue.category }}</td>
+              <td><span class="truncate" title="{{ issue.description }}" style="max-width:240px;">{{ issue.description }}</span></td>
+              <td><code style="font-size:0.76rem;">{{ issue.file or '—' }}{% if issue.line %}:{{ issue.line }}{% endif %}</code></td>
+              <td>
+                {% if issue.status == 'pr_created' %}
+                  <span class="badge badge-pr-created">PR Created</span>
+                {% elif issue.status == 'fixed' %}
+                  <span class="badge badge-fixed">Fixed</span>
+                {% else %}
+                  <span class="badge badge-{{ issue.status }}">{{ issue.status }}</span>
+                {% endif %}
+              </td>
+              <td>{% if issue.fix_pr_url %}<a href="{{ issue.fix_pr_url }}" target="_blank">PR ↗</a>{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="empty">No issues yet. Run a scan from the Control Center.</p>
+        {% endif %}
+      </div>
     </div>
-    <div style="border-bottom:1px solid var(--border); margin-bottom:12px;"></div>
-    <div class="table-wrap">
-      {% if issues %}
-      <table id="issues-table">
-        <thead>
-          <tr>
-            <th>Time Identified</th><th>Severity</th><th>Category</th><th>Description</th>
-            <th>File</th><th>Status</th><th>Fix PR</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for issue in issues %}
-          <tr data-status="{{ issue.status }}" data-severity="{{ issue.severity }}" data-category="{{ issue.category }}">
-            <td style="white-space:nowrap;font-size:0.78rem;color:var(--muted);">
-              {{ issue.created_at | int | datetimeformat if issue.created_at else '—' }}
-            </td>
-            <td><span class="badge badge-{{ issue.severity }}">{{ issue.severity }}</span></td>
-            <td>{{ issue.category }}</td>
-            <td><span class="truncate" title="{{ issue.description }}" style="max-width:240px;">{{ issue.description }}</span></td>
-            <td><code style="font-size:0.76rem;">{{ issue.file or '—' }}{% if issue.line %}:{{ issue.line }}{% endif %}</code></td>
-            <td>
-              {% if issue.status == 'pr_created' %}
-                <span class="badge badge-pr-created">PR Created</span>
-              {% elif issue.status == 'fixed' %}
-                <span class="badge badge-fixed">Fixed</span>
-              {% else %}
-                <span class="badge badge-{{ issue.status }}">{{ issue.status }}</span>
-              {% endif %}
-            </td>
-            <td>{% if issue.fix_pr_url %}<a href="{{ issue.fix_pr_url }}" target="_blank">PR ↗</a>{% else %}—{% endif %}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <p class="empty">No issues yet. Run a scan from the Control Center.</p>
-      {% endif %}
+
+    <!-- Features panel -->
+    <div id="log-panel-features" style="display:none;">
+      <div class="table-wrap">
+        {% if feature_sessions %}
+        <table>
+          <thead>
+            <tr>
+              <th>Time Started</th><th>Status</th><th>Detail</th><th>PR</th><th>Devin</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in feature_sessions %}
+            <tr>
+              <td style="white-space:nowrap;font-size:0.78rem;color:var(--muted);">
+                {{ s.created_at | int | datetimeformat if s.created_at else '—' }}
+              </td>
+              <td><span class="badge badge-{{ s.display_status }}">{{ s.display_status }}</span></td>
+              <td style="font-size:0.82rem;">{{ s.display_detail }}</td>
+              <td>{% if s.pr_url %}<a href="{{ s.pr_url }}" target="_blank">PR ↗</a>{% else %}—{% endif %}</td>
+              <td>{% if s.devin_url %}<a href="{{ s.devin_url }}" target="_blank">Open ↗</a>{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="empty">No feature sessions yet. Use Agent 3 → Add Feature in the Control Center.</p>
+        {% endif %}
+      </div>
     </div>
+
   </section>
 
   <!-- Sessions table (human-friendly, no ACUs) -->
@@ -710,6 +755,23 @@
 
 
 <script>
+// ════════════════════════════════════════════════════════
+//  Issues / Features log tab switching
+// ════════════════════════════════════════════════════════
+function switchLogTab(name) {
+  const panels = { issues: 'log-panel-issues', features: 'log-panel-features' };
+  const btns   = { issues: 'log-tab-issues',   features: 'log-tab-features' };
+  Object.keys(panels).forEach(k => {
+    const panel = document.getElementById(panels[k]);
+    const btn   = document.getElementById(btns[k]);
+    if (!panel || !btn) return;
+    const active = k === name;
+    panel.style.display = active ? '' : 'none';
+    btn.style.color = active ? 'var(--accent)' : 'var(--muted)';
+    btn.style.borderBottomColor = active ? 'var(--accent)' : 'transparent';
+  });
+}
+
 // ════════════════════════════════════════════════════════
 //  Issues table filtering
 // ════════════════════════════════════════════════════════
