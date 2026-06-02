@@ -334,6 +334,17 @@ def get_open_issues() -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+def get_incomplete_sessions() -> list[dict[str, Any]]:
+    """Return all sessions whose status is not terminal (running, new, claimed, etc.)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT * FROM sessions
+               WHERE status NOT IN ('exit','error','suspended')
+               ORDER BY created_at ASC"""
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_issues_by_status(status: str) -> list[dict[str, Any]]:
     """Return all issues with the given status, ordered oldest first."""
     with get_conn() as conn:

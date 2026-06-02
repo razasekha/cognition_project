@@ -153,6 +153,195 @@ def _safe_fixer_run(issue_id: int) -> None:
         logger.exception("Fixer failed for issue %d: %s", issue_id, exc)
 
 
+def _recover_sessions() -> None:
+    """On startup, re-poll any sessions still marked as running/new in the DB.
+
+    This handles the case where a server restart killed background threads
+    mid-flight. We fetch the real current status from Devin, update the DB,
+    and for completed scanners we re-process the structured output so issues
+    are not lost.
+    """
+    orphans = db.get_incomplete_sessions()
+    if not orphans:
+        logger.info("Session recovery: no incomplete sessions found.")
+        return
+
+    logger.info("Session recovery: found %d incomplete session(s) — re-polling Devin.", len(orphans))
+
+    for sess in orphans:
+        session_id = sess["session_id"]
+        role = sess["role"]
+        issue_id = sess.get("issue_id")
+        try:
+            from app import devin_client as dc
+            current = dc.get_session(session_id)
+            status = current.get("status", "")
+            detail = current.get("status_detail", "")
+            pr_urls = dc.get_pr_urls(current)
+            pr_url = pr_urls[0] if pr_urls else None
+
+            db.update_session(
+                session_id=session_id,
+                status=status,
+                status_detail=detail,
+                pr_url=pr_url,
+                acus_consumed=current.get("acus_consumed", 0.0),
+            )
+
+            is_done = dc.is_done_ok(current)
+
+            if role == "scanner" and is_done:
+                # Re-process structured output — emit any issues we missed
+                structured = current.get("structured_output") or {}
+                findings = structured.get("issues", [])
+                devin_url = sess.get("devin_url", "")
+                new_ids: list[int] = []
+                for finding in findings:
+                    issue_id_new = db.insert_issue_if_new(
+                        severity=finding.get("severity", "low"),
+                        category=finding.get("category", "unknown"),
+                        file=finding.get("file") or "",
+                        line=finding.get("line") or 0,
+                        description=finding.get("description", ""),
+                        recommendation=finding.get("recommendation") or "",
+                        source_session_id=session_id,
+                    )
+                    if issue_id_new:
+                        new_ids.append(issue_id_new)
+                        logger.info(
+                            "Recovery: logged missed issue id=%d from scanner %s",
+                            issue_id_new, session_id,
+                        )
+                if new_ids:
+                    logger.info(
+                        "Recovery: scanner %s had %d unlogged issue(s) — firing fixers.",
+                        session_id, len(new_ids),
+                    )
+                    for iid in new_ids:
+                        _fixer_pool.submit(_safe_fixer_run, iid)
+
+            elif role == "fixer" and issue_id and is_done:
+                if pr_url:
+                    db.set_issue_pr_created(issue_id, pr_url)
+                    logger.info(
+                        "Recovery: fixer %s succeeded for issue %d, pr=%s",
+                        session_id, issue_id, pr_url,
+                    )
+                else:
+                    db.set_issue_failed(issue_id)
+                    logger.warning(
+                        "Recovery: fixer %s for issue %d completed without PR.",
+                        session_id, issue_id,
+                    )
+
+            elif status in ("error", "suspended"):
+                if role == "fixer" and issue_id:
+                    db.set_issue_failed(issue_id)
+                logger.warning(
+                    "Recovery: session %s (%s) is in terminal error state %s/%s.",
+                    session_id, role, status, detail,
+                )
+            else:
+                # Still genuinely running — re-submit to poll in background
+                logger.info(
+                    "Recovery: session %s (%s) still active (%s/%s) — re-attaching poller.",
+                    session_id, role, status, detail,
+                )
+                if role == "scanner":
+                    _fixer_pool.submit(_reattach_scanner, session_id)
+                elif role == "fixer" and issue_id:
+                    _fixer_pool.submit(_reattach_fixer, session_id, issue_id)
+
+        except Exception as exc:
+            logger.exception("Recovery failed for session %s: %s", session_id, exc)
+
+
+def _reattach_scanner(session_id: str) -> None:
+    """Re-attach a poll loop to a scanner session that was still running at startup."""
+    from app import devin_client as dc
+    try:
+        def _on_poll(s: dict) -> None:
+            db.update_session(
+                session_id=session_id,
+                status=s.get("status", "new"),
+                status_detail=s.get("status_detail"),
+                acus_consumed=s.get("acus_consumed", 0.0),
+            )
+
+        final = dc.poll_until_done(session_id, on_poll=_on_poll)
+        db.update_session(
+            session_id=session_id,
+            status=final.get("status", "error"),
+            status_detail=final.get("status_detail"),
+            acus_consumed=final.get("acus_consumed", 0.0),
+        )
+
+        if not dc.is_done_ok(final):
+            return
+
+        structured = final.get("structured_output") or {}
+        findings = structured.get("issues", [])
+        devin_url = ""
+        with db.get_conn() as conn:
+            row = conn.execute(
+                "SELECT devin_url FROM sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()
+            if row:
+                devin_url = row["devin_url"] or ""
+
+        new_ids: list[int] = []
+        for finding in findings:
+            iid = db.insert_issue_if_new(
+                severity=finding.get("severity", "low"),
+                category=finding.get("category", "unknown"),
+                file=finding.get("file") or "",
+                line=finding.get("line") or 0,
+                description=finding.get("description", ""),
+                recommendation=finding.get("recommendation") or "",
+                source_session_id=session_id,
+            )
+            if iid:
+                new_ids.append(iid)
+        if new_ids:
+            for iid in new_ids:
+                _fixer_pool.submit(_safe_fixer_run, iid)
+        logger.info("Reattached scanner %s completed — %d new issue(s).", session_id, len(new_ids))
+    except Exception as exc:
+        logger.exception("Reattached scanner %s failed: %s", session_id, exc)
+
+
+def _reattach_fixer(session_id: str, issue_id: int) -> None:
+    """Re-attach a poll loop to a fixer session that was still running at startup."""
+    from app import devin_client as dc
+    try:
+        def _on_poll(s: dict) -> None:
+            db.update_session(
+                session_id=session_id,
+                status=s.get("status", "new"),
+                status_detail=s.get("status_detail"),
+                pr_url=(dc.get_pr_urls(s) or [None])[0],
+                acus_consumed=s.get("acus_consumed", 0.0),
+            )
+
+        final = dc.poll_until_done(session_id, on_poll=_on_poll)
+        pr_urls = dc.get_pr_urls(final)
+        pr_url = pr_urls[0] if pr_urls else None
+        db.update_session(
+            session_id=session_id,
+            status=final.get("status", "error"),
+            status_detail=final.get("status_detail"),
+            pr_url=pr_url,
+            acus_consumed=final.get("acus_consumed", 0.0),
+        )
+        if dc.is_done_ok(final) and pr_url:
+            db.set_issue_pr_created(issue_id, pr_url)
+        else:
+            db.set_issue_failed(issue_id)
+        logger.info("Reattached fixer %s for issue %d completed.", session_id, issue_id)
+    except Exception as exc:
+        logger.exception("Reattached fixer %s failed: %s", session_id, exc)
+
+
 def _parse_cron(cron_expr: str) -> CronTrigger:
     """Parse a standard 5-field cron expression into an APScheduler CronTrigger."""
     parts = re.split(r"\s+", cron_expr.strip())
@@ -192,6 +381,8 @@ async def lifespan(app: FastAPI):
         settings.scan_cron,
         settings.pr_merge_poll_minutes,
     )
+    # Re-attach pollers for any sessions that were mid-flight when the server last stopped
+    _fixer_pool.submit(_recover_sessions)
     yield
     scheduler.shutdown(wait=False)
     _fixer_pool.shutdown(wait=False)
