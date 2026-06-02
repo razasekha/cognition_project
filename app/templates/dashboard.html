@@ -471,12 +471,43 @@
 
   </div>
 
-  <!-- Issues table with Time Identified column -->
+  <!-- Issues table with filters -->
   <section>
-    <h2>Issues Log</h2>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:10px;">
+      <h2 style="margin-bottom:0; border-bottom:none; padding-bottom:0;">Issues Log</h2>
+      {% if issues %}
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <select id="filter-status" onchange="filterIssues()" style="width:auto; padding:5px 10px; font-size:0.78rem; border-radius:6px;">
+          <option value="">All Statuses</option>
+          <option value="open">Open</option>
+          <option value="fixing">Fixing</option>
+          <option value="pr_created">PR Created</option>
+          <option value="fixed">Fixed</option>
+          <option value="failed">Failed</option>
+        </select>
+        <select id="filter-severity" onchange="filterIssues()" style="width:auto; padding:5px 10px; font-size:0.78rem; border-radius:6px;">
+          <option value="">All Severities</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <select id="filter-category" onchange="filterIssues()" style="width:auto; padding:5px 10px; font-size:0.78rem; border-radius:6px;">
+          <option value="">All Categories</option>
+          {% set cats = [] %}
+          {% for issue in issues %}{% if issue.category and issue.category not in cats %}{% set _ = cats.append(issue.category) %}{% endif %}{% endfor %}
+          {% for cat in cats | sort %}
+          <option value="{{ cat }}">{{ cat }}</option>
+          {% endfor %}
+        </select>
+        <span id="filter-count" style="font-size:0.76rem; color:var(--muted);"></span>
+      </div>
+      {% endif %}
+    </div>
+    <div style="border-bottom:1px solid var(--border); margin-bottom:12px;"></div>
     <div class="table-wrap">
       {% if issues %}
-      <table>
+      <table id="issues-table">
         <thead>
           <tr>
             <th>Time Identified</th><th>Severity</th><th>Category</th><th>Description</th>
@@ -485,7 +516,7 @@
         </thead>
         <tbody>
           {% for issue in issues %}
-          <tr>
+          <tr data-status="{{ issue.status }}" data-severity="{{ issue.severity }}" data-category="{{ issue.category }}">
             <td style="white-space:nowrap;font-size:0.78rem;color:var(--muted);">
               {{ issue.created_at | int | datetimeformat if issue.created_at else '—' }}
             </td>
@@ -679,6 +710,30 @@
 
 
 <script>
+// ════════════════════════════════════════════════════════
+//  Issues table filtering
+// ════════════════════════════════════════════════════════
+function filterIssues() {
+  const status   = document.getElementById('filter-status')?.value   || '';
+  const severity = document.getElementById('filter-severity')?.value || '';
+  const category = document.getElementById('filter-category')?.value || '';
+  const rows = document.querySelectorAll('#issues-table tbody tr');
+  let visible = 0;
+  rows.forEach(row => {
+    const match =
+      (!status   || row.dataset.status   === status)   &&
+      (!severity || row.dataset.severity === severity) &&
+      (!category || row.dataset.category === category);
+    row.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  const countEl = document.getElementById('filter-count');
+  if (countEl) {
+    const total = rows.length;
+    countEl.textContent = visible === total ? '' : `${visible} of ${total}`;
+  }
+}
+
 // ════════════════════════════════════════════════════════
 //  Tab switching
 // ════════════════════════════════════════════════════════
