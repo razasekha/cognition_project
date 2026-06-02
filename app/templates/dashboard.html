@@ -399,55 +399,8 @@
 
   {% set m = metrics %}
 
-  <!-- ── Status bars ── -->
-  <div style="margin-bottom:28px; display:flex; flex-direction:column; gap:18px;">
-
-    {# Issues bar #}
-    {% set i = m.issues %}
-    {% set i_total = i.total if i.total > 0 else 1 %}
-    <div>
-      <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px;">
-        <span style="font-size:0.82rem; font-weight:600; color:var(--text);">Issues</span>
-        <span style="font-size:0.78rem; color:var(--muted);">{{ i.total }} total</span>
-      </div>
-      <div style="display:flex; height:14px; border-radius:7px; overflow:hidden; background:var(--border);">
-        {% if i.fixed > 0 %}<div title="Fixed: {{ i.fixed }}" style="width:{{ (i.fixed / i_total * 100)|round(1) }}%; background:var(--green);"></div>{% endif %}
-        {% if i.pr_created > 0 %}<div title="PR Created: {{ i.pr_created }}" style="width:{{ (i.pr_created / i_total * 100)|round(1) }}%; background:var(--teal);"></div>{% endif %}
-        {% if i.in_progress > 0 %}<div title="In Progress: {{ i.in_progress }}" style="width:{{ (i.in_progress / i_total * 100)|round(1) }}%; background:var(--yellow);"></div>{% endif %}
-        {% if i.failed > 0 %}<div title="Failed: {{ i.failed }}" style="width:{{ (i.failed / i_total * 100)|round(1) }}%; background:var(--red);"></div>{% endif %}
-      </div>
-      <div style="display:flex; gap:16px; margin-top:6px; flex-wrap:wrap;">
-        <span style="font-size:0.73rem; color:var(--green);">&#9632; Fixed {{ i.fixed }}</span>
-        <span style="font-size:0.73rem; color:var(--teal);">&#9632; PR Created {{ i.pr_created }}</span>
-        <span style="font-size:0.73rem; color:var(--yellow);">&#9632; In Progress {{ i.in_progress }}</span>
-        <span style="font-size:0.73rem; color:var(--red);">&#9632; Failed {{ i.failed }}</span>
-      </div>
-    </div>
-
-    {# Features bar #}
-    {% set f = m.features %}
-    {% set f_total = f.total if f.total > 0 else 1 %}
-    <div>
-      <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px;">
-        <span style="font-size:0.82rem; font-weight:600; color:var(--text);">Features</span>
-        <span style="font-size:0.78rem; color:var(--muted);">{{ f.total }} total</span>
-      </div>
-      <div style="display:flex; height:14px; border-radius:7px; overflow:hidden; background:var(--border);">
-        {% if f.completed > 0 %}<div title="Completed: {{ f.completed }}" style="width:{{ (f.completed / f_total * 100)|round(1) }}%; background:var(--green);"></div>{% endif %}
-        {% if f.in_progress > 0 %}<div title="In Progress: {{ f.in_progress }}" style="width:{{ (f.in_progress / f_total * 100)|round(1) }}%; background:var(--yellow);"></div>{% endif %}
-        {% if f.failed > 0 %}<div title="Failed: {{ f.failed }}" style="width:{{ (f.failed / f_total * 100)|round(1) }}%; background:var(--red);"></div>{% endif %}
-      </div>
-      <div style="display:flex; gap:16px; margin-top:6px; flex-wrap:wrap;">
-        <span style="font-size:0.73rem; color:var(--green);">&#9632; Completed {{ f.completed }}</span>
-        <span style="font-size:0.73rem; color:var(--yellow);">&#9632; In Progress {{ f.in_progress }}</span>
-        <span style="font-size:0.73rem; color:var(--red);">&#9632; Failed {{ f.failed }}</span>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- ── 3 summary cards ── -->
-  <div class="cards" style="grid-template-columns:repeat(3,1fr); margin-bottom:32px;">
+  <!-- ── 3 summary cards (top) ── -->
+  <div class="cards" style="grid-template-columns:repeat(3,1fr); margin-bottom:24px;">
     <div class="card">
       <div class="label">Total Issues Resolved</div>
       <div class="value value-green">{{ m.issues.fixed }}</div>
@@ -467,6 +420,55 @@
       </div>
       <div class="sub">Mean time to remediate</div>
     </div>
+  </div>
+
+  <!-- ── Status bars ── -->
+  {# For the bars: Fixed = fixed only, In Progress = open+fixing, Failed = failed #}
+  <div style="margin-bottom:32px; display:flex; flex-direction:column; gap:20px;">
+
+    {# Issues bar #}
+    {% set i = m.issues %}
+    {% set i_fixed_display = i.fixed %}
+    {% set i_inprog_display = i.open + i.fixing %}
+    {% set i_total_display = i_fixed_display + i_inprog_display + i.failed %}
+    {% set i_denom = i_total_display if i_total_display > 0 else 1 %}
+    <div>
+      <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px;">
+        <span style="font-size:0.88rem; font-weight:600; color:var(--text);">Issues</span>
+        <span style="font-size:0.82rem; color:var(--muted);">{{ i.total }} total</span>
+      </div>
+      <div style="display:flex; height:16px; border-radius:8px; overflow:hidden; background:var(--border);">
+        {% if i_fixed_display > 0 %}<div title="Fixed: {{ i_fixed_display }}" style="width:{{ (i_fixed_display / i_denom * 100)|round(1) }}%; background:var(--green); transition:width 0.4s;"></div>{% endif %}
+        {% if i_inprog_display > 0 %}<div title="In Progress: {{ i_inprog_display }}" style="width:{{ (i_inprog_display / i_denom * 100)|round(1) }}%; background:var(--yellow); transition:width 0.4s;"></div>{% endif %}
+        {% if i.failed > 0 %}<div title="Failed: {{ i.failed }}" style="width:{{ (i.failed / i_denom * 100)|round(1) }}%; background:var(--red); transition:width 0.4s;"></div>{% endif %}
+      </div>
+      <div style="display:flex; gap:20px; margin-top:8px; flex-wrap:wrap;">
+        <span style="font-size:0.84rem; font-weight:500; color:var(--green);">&#9632; Fixed &nbsp;{{ i_fixed_display }}</span>
+        <span style="font-size:0.84rem; font-weight:500; color:var(--yellow);">&#9632; In Progress &nbsp;{{ i_inprog_display }}</span>
+        <span style="font-size:0.84rem; font-weight:500; color:var(--red);">&#9632; Failed &nbsp;{{ i.failed }}</span>
+      </div>
+    </div>
+
+    {# Features bar #}
+    {% set f = m.features %}
+    {% set f_denom = f.total if f.total > 0 else 1 %}
+    <div>
+      <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px;">
+        <span style="font-size:0.88rem; font-weight:600; color:var(--text);">Features</span>
+        <span style="font-size:0.82rem; color:var(--muted);">{{ f.total }} total</span>
+      </div>
+      <div style="display:flex; height:16px; border-radius:8px; overflow:hidden; background:var(--border);">
+        {% if f.completed > 0 %}<div title="Completed: {{ f.completed }}" style="width:{{ (f.completed / f_denom * 100)|round(1) }}%; background:var(--green); transition:width 0.4s;"></div>{% endif %}
+        {% if f.in_progress > 0 %}<div title="In Progress: {{ f.in_progress }}" style="width:{{ (f.in_progress / f_denom * 100)|round(1) }}%; background:var(--yellow); transition:width 0.4s;"></div>{% endif %}
+        {% if f.failed > 0 %}<div title="Failed: {{ f.failed }}" style="width:{{ (f.failed / f_denom * 100)|round(1) }}%; background:var(--red); transition:width 0.4s;"></div>{% endif %}
+      </div>
+      <div style="display:flex; gap:20px; margin-top:8px; flex-wrap:wrap;">
+        <span style="font-size:0.84rem; font-weight:500; color:var(--green);">&#9632; Completed &nbsp;{{ f.completed }}</span>
+        <span style="font-size:0.84rem; font-weight:500; color:var(--yellow);">&#9632; In Progress &nbsp;{{ f.in_progress }}</span>
+        <span style="font-size:0.84rem; font-weight:500; color:var(--red);">&#9632; Failed &nbsp;{{ f.failed }}</span>
+      </div>
+    </div>
+
   </div>
 
   <!-- Issues table with Time Identified column -->
